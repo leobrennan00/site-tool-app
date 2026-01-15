@@ -1,0 +1,8 @@
+.cursor/
+.vscode/
+node_modules/
+.expo/
+.git/
+tmpclaude-*
+*.log
+.DS_Store
