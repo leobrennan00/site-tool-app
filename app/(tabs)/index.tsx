@@ -36,7 +36,13 @@ const SectionHeader = ({ title }: { title: string }) => (
 );
 
 
-const API_BASE = "http://192.168.1.39:8080";
+// API Configuration
+// Use Railway in production, local server in development
+// To test with local server: change to "http://192.168.1.39:8080"
+// To test with Railway: change to "https://web-production-133cf.up.railway.app"
+const API_BASE = __DEV__
+  ? "http://192.168.1.39:8080"  // Local development
+  : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 
 export default function Index() {
@@ -241,7 +247,13 @@ export default function Index() {
   // 6.0 — Septic Tank Systems (Chapter 7)
   const [septTankCapacity, setSeptTankCapacity] = useState(""); // m³
 
-const API_BASE = "http://192.168.1.39:8080";
+// API Configuration
+// Use Railway in production, local server in development
+// To test with local server: change to "http://192.168.1.39:8080"
+// To test with Railway: change to "https://web-production-133cf.up.railway.app"
+const API_BASE = __DEV__
+  ? "http://192.168.1.39:8080"  // Local development
+  : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 const TANK_TYPES = [
   "Eurotank BAF2",
