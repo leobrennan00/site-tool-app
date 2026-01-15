@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "sitetoolapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true
     },
@@ -49,8 +49,13 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "01b126d7-4837-4fe3-9686-c79034e770a2"
+      }
     }
   }
 }
