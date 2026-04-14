@@ -3,7 +3,7 @@ import { ScrollView, View, Text, Button, Image, StyleSheet, Alert, ActivityIndic
 import * as ImagePicker from "expo-image-picker";
 import { uploadPhoto } from "../../lib/storage";
 
-const API_BASE = "http://192.168.1.39:8080";
+const API_BASE = "http://192.168.1.39:8000";
 
 interface PhotosProps {
   photoUrls: string[];

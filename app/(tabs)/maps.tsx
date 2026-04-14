@@ -1,7 +1,7 @@
 import React from "react";
 import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Platform } from "react-native";
 
-const API_BASE = "http://192.168.1.39:8080";
+const API_BASE = "http://192.168.1.39:8000";
 
 interface MapsProps {
   lat: string;

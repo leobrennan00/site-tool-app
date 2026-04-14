@@ -41,7 +41,7 @@ const SectionHeader = ({ title }: { title: string }) => (
 // To test with local server: change to "http://192.168.1.39:8080"
 // To test with Railway: change to "https://web-production-133cf.up.railway.app"
 const API_BASE = __DEV__
-  ? "http://192.168.1.39:8080"  // Local development
+  ? "http://192.168.1.39:8000"  // Local development — update IP if your machine's IP changes
   : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 
@@ -252,7 +252,7 @@ export default function Index() {
 // To test with local server: change to "http://192.168.1.39:8080"
 // To test with Railway: change to "https://web-production-133cf.up.railway.app"
 const API_BASE = __DEV__
-  ? "http://192.168.1.39:8080"  // Local development
+  ? "http://192.168.1.39:8000"  // Local development — update IP if your machine's IP changes
   : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 const TANK_TYPES = [
@@ -2404,12 +2404,19 @@ const TANK_TYPES = [
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id || 'anonymous';
 
-      // 1) Generate the map images
+      // 1) Generate the map images — allow up to 5 minutes (maps call several external APIs)
       const mapsUrl = `${API_BASE}/generate_maps?lat=${encodeURIComponent(
         lat
       )}&lon=${encodeURIComponent(lon)}&buffer_m=${encodeURIComponent(buffer)}&user_id=${encodeURIComponent(userId)}`;
 
-      const res = await fetch(mapsUrl);
+      const mapsAbort = new AbortController();
+      const mapsTimer = setTimeout(() => mapsAbort.abort(), 5 * 60 * 1000);
+      let res: Response;
+      try {
+        res = await fetch(mapsUrl, { signal: mapsAbort.signal });
+      } finally {
+        clearTimeout(mapsTimer);
+      }
       const json = await res.json();
 
       const cacheBust = Date.now();
