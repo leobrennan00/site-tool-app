@@ -1,5 +1,5 @@
-import React from "react";
-import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Platform } from "react-native";
+import React, { useState } from "react";
+import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Platform, Pressable, ActivityIndicator } from "react-native";
 
 const API_BASE = "http://192.168.1.39:8000";
 
@@ -8,8 +8,6 @@ interface MapsProps {
   setLat: (val: string) => void;
   lon: string;
   setLon: (val: string) => void;
-  buffer: string;
-  setBuffer: (val: string) => void;
   loading: boolean;
   imgErr: string | null;
   imgUris: string[];
@@ -24,8 +22,6 @@ export default function MapsTab(props: MapsProps) {
     setLat,
     lon,
     setLon,
-    buffer,
-    setBuffer,
     loading,
     imgErr,
     imgUris,
@@ -33,6 +29,36 @@ export default function MapsTab(props: MapsProps) {
     generateMaps,
     getCurrentLocation,
   } = props;
+
+  const [eircode, setEircode] = useState("");
+  const [eircodeErr, setEircodeErr] = useState<string | null>(null);
+  const [eircodeLoading, setEircodeLoading] = useState(false);
+
+  async function lookupEircode() {
+    const query = eircode.trim();
+    if (!query) return;
+    setEircodeErr(null);
+    setEircodeLoading(true);
+    try {
+      const url =
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", Ireland")}&format=json&limit=1&countrycodes=ie`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": "SiteReportApp/1.0" },
+      });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setLat(String(parseFloat(data[0].lat).toFixed(6)));
+        setLon(String(parseFloat(data[0].lon).toFixed(6)));
+        setEircodeErr(null);
+      } else {
+        setEircodeErr("Eircode not found. Check the code and try again.");
+      }
+    } catch {
+      setEircodeErr("Could not look up Eircode. Check your connection.");
+    } finally {
+      setEircodeLoading(false);
+    }
+  }
 
   // Helper function to get description for this map
   const getMapDescription = (mapUri: string): string | null => {
@@ -88,6 +114,36 @@ export default function MapsTab(props: MapsProps) {
         <Text style={styles.cardTitle}>Site Coordinates</Text>
 
         <View style={styles.row}>
+          <Text style={styles.label}>Eircode</Text>
+          <View style={styles.eircodeRow}>
+            <TextInput
+              style={[styles.input, styles.eircodeInput]}
+              value={eircode}
+              onChangeText={(t) => { setEircode(t); setEircodeErr(null); }}
+              placeholder="e.g. V94 XYZ1"
+              autoCapitalize="characters"
+            />
+            <Pressable
+              onPress={lookupEircode}
+              disabled={eircodeLoading || !eircode.trim()}
+              style={[styles.lookupBtn, (!eircode.trim() || eircodeLoading) && styles.lookupBtnDisabled]}
+            >
+              {eircodeLoading
+                ? <ActivityIndicator size="small" color="#FFF" />
+                : <Text style={styles.lookupBtnText}>Look Up</Text>
+              }
+            </Pressable>
+          </View>
+          {eircodeErr && <Text style={styles.eircodeErr}>{eircodeErr}</Text>}
+        </View>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or enter manually</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <View style={styles.row}>
           <Text style={styles.label}>Latitude</Text>
           <TextInput
             style={styles.input}
@@ -114,22 +170,6 @@ export default function MapsTab(props: MapsProps) {
           onPress={getCurrentLocation}
           color="#4A90E2"
         />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Map Settings</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Buffer Distance (meters)</Text>
-          <TextInput
-            style={styles.input}
-            value={buffer}
-            onChangeText={setBuffer}
-            keyboardType="numeric"
-            placeholder="4100"
-          />
-          <Text style={styles.hint}>Recommended: 4100m for standard sites</Text>
-        </View>
       </View>
 
       <View style={styles.buttonContainer}>
@@ -234,6 +274,51 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     backgroundColor: "#FFF",
+  },
+  eircodeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  eircodeInput: {
+    flex: 1,
+  },
+  lookupBtn: {
+    backgroundColor: "#4A90E2",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 84,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lookupBtnDisabled: {
+    backgroundColor: "#A0BFEF",
+  },
+  lookupBtnText: {
+    color: "#FFF",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  eircodeErr: {
+    color: "#C62828",
+    fontSize: 13,
+    marginTop: 6,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#DDD",
+  },
+  dividerText: {
+    color: "#999",
+    fontSize: 12,
+    marginHorizontal: 10,
   },
   hint: {
     fontSize: 12,

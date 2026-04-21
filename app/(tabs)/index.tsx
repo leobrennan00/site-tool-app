@@ -94,9 +94,8 @@ export default function Index() {
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [planPdfUrls, setPlanPdfUrls] = useState<string[]>([]);
-  const [lat, setLat] = useState("54.393197");
-  const [lon, setLon] = useState("-8.523567");
-  const [buffer, setBuffer] = useState("4100");
+  const [lat, setLat] = useState("");
+  const [lon, setLon] = useState("");
   const [loading, setLoading] = useState(false);
   const [imgErr, setImgErr] = useState<string | null>(null);
   const [siteLocation, setSiteLocation] = useState("");
@@ -423,7 +422,7 @@ const TANK_TYPES = [
         setBedrockType(bed.description);
       }
 
-      // --- Aquifer Category (map description -> enum) ---
+      // --- Aquifer Category (map description -> enum) + code ---
       const aq = summaries.aquifer;
       if (aq && typeof aq.description === "string") {
         const desc = String(aq.description);
@@ -440,6 +439,27 @@ const TANK_TYPES = [
 
         if (cat && !aquiferCategory) {
           setAquiferCategory(cat as any);
+        }
+
+        if (aq.code && !aquiferCode) {
+          // Map every GSI AQUIFERCAT code to the matching radio button option.
+          // Order matters — longer/more specific codes must come before shorter prefixes.
+          const codeMap: Record<string, string> = {
+            "Rkc":   "Rk",      // Karstified conduit
+            "Rkd":   "Rk",      // Karstified diffuse
+            "Rf/Rk": "Rf/Rk",   // Mixed fissured/karstified
+            "Rk":    "Rk",
+            "Rf":    "Rf",
+            "Rg":    "Rg",
+            "Lk":    "Lk",      // Locally Important Karstified
+            "Ll":    "Ll",
+            "Lm":    "Lm",
+            "Pl":    "Pl",
+            "Pu":    "Pu",
+          };
+          const raw = String(aq.code).trim();
+          const matched = codeMap[raw];
+          if (matched) setAquiferCode(matched);
         }
       }
 
@@ -483,10 +503,78 @@ const TANK_TYPES = [
         }
       }
 
+      // --- Groundwater Protection Response (Table 2 — EPA CoP for DWWTS) ---
+      // Priority: SPA Inner (SI) → SPA Outer (SO) → aquifer code column
+      // Columns:   SI     SO     Rk     Rf/Rg  Lm/Lg  Ll     Pl     Pu
+      // Extreme:   R3²    R3¹    R2²    R2²    R2¹    R2¹    R2¹    R2¹
+      // High:      R2⁴    R2³    R2¹    R1     R1     R1     R1     R1
+      // Moderate:  R2⁴    R2³    R1     R1     R1     R1     R1     R1
+      // Low:       R2⁴    R1     R1     R1     R1     R1     R1     R1
+      const gwpTable2: Record<string, Record<string, string>> = {
+        "Extreme":  { SI: "R3²", SO: "R3¹", Rk: "R2²", "Rf/Rg": "R2²", "Lm/Lg": "R2¹", Ll: "R2¹", Pl: "R2¹", Pu: "R2¹" },
+        "High":     { SI: "R2⁴", SO: "R2³", Rk: "R2¹", "Rf/Rg": "R1",  "Lm/Lg": "R1",  Ll: "R1",  Pl: "R1",  Pu: "R1"  },
+        "Moderate": { SI: "R2⁴", SO: "R2³", Rk: "R1",  "Rf/Rg": "R1",  "Lm/Lg": "R1",  Ll: "R1",  Pl: "R1",  Pu: "R1"  },
+        "Low":      { SI: "R2⁴", SO: "R1",  Rk: "R1",  "Rf/Rg": "R1",  "Lm/Lg": "R1",  Ll: "R1",  Pl: "R1",  Pu: "R1"  },
+      };
+
+      // Map auto-detected aquifer code to Table 2 column key
+      // GSI raw codes (AQUIFERCAT) include sub-codes like Rkc/Rkd that must resolve to Rk
+      const aqCodeToCol: Record<string, string> = {
+        "Rk":    "Rk",
+        "Rkc":   "Rk",    // karstified conduit
+        "Rkd":   "Rk",    // karstified diffuse
+        "Rf/Rk": "Rk",    // mixed fissured/karstified — conservative Rk column
+        "Rf":    "Rf/Rg",
+        "Rg":    "Rf/Rg",
+        "Lm":    "Lm/Lg",
+        "Lk":    "Lm/Lg", // karstified locally important
+        "Ll":    "Ll",
+        "Pl":    "Pl",
+        "Pu":    "Pu",
+      };
+
+      const derivedVul = summaries.vulnerability?.description
+        ? (() => {
+            const l = summaries.vulnerability.description.toLowerCase();
+            if (l.includes("extreme"))  return "Extreme";
+            if (l.includes("high"))     return "High";
+            if (l.includes("moderate")) return "Moderate";
+            if (l.includes("low"))      return "Low";
+            return null;
+          })()
+        : null;
+
+      if (derivedVul && !gwProtectionResponse) {
+        const spaData = summaries.source_protection;
+        let col: string | null = null;
+
+        if (spaData?.SI) {
+          col = "SI";
+        } else if (spaData?.SO) {
+          col = "SO";
+        } else {
+          const rawCode = String(summaries.aquifer?.code ?? "").trim();
+          col = aqCodeToCol[rawCode] ?? null;
+        }
+
+        if (col) {
+          const response = gwpTable2[derivedVul]?.[col];
+          if (response) setGwProtectionResponse(response);
+        }
+      }
+
       // --- Groundwater Flow Direction ---
       const flow = summaries.groundwater_flow;
       if (flow && typeof flow.direction_text === "string" && !gwFlowDirection) {
         setGwFlowDirection(flow.direction_text);
+      }
+
+      // --- Source Protection Areas ---
+      const spa = summaries.source_protection;
+      if (spa) {
+        if (spa.ZOC) setSpaZOC(true);
+        if (spa.SI)  setSpaSI(true);
+        if (spa.SO)  setSpaSO(true);
       }
     } catch (err) {
       console.warn("Failed to prefill from layer_summaries", err);
@@ -2407,7 +2495,7 @@ const TANK_TYPES = [
       // 1) Generate the map images — allow up to 5 minutes (maps call several external APIs)
       const mapsUrl = `${API_BASE}/generate_maps?lat=${encodeURIComponent(
         lat
-      )}&lon=${encodeURIComponent(lon)}&buffer_m=${encodeURIComponent(buffer)}&user_id=${encodeURIComponent(userId)}`;
+      )}&lon=${encodeURIComponent(lon)}&user_id=${encodeURIComponent(userId)}`;
 
       const mapsAbort = new AbortController();
       const mapsTimer = setTimeout(() => mapsAbort.abort(), 5 * 60 * 1000);
@@ -2820,8 +2908,7 @@ return (
         setLat={setLat}
         lon={lon}
         setLon={setLon}
-        buffer={buffer}
-        setBuffer={setBuffer}
+
         loading={loading}
         imgErr={imgErr}
         imgUris={imgUris}

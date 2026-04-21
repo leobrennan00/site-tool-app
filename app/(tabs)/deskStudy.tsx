@@ -121,7 +121,7 @@ export default function DeskStudyTab(props: DeskStudyProps) {
         {aquiferCategory === "Regionally Important" && (
           <View style={styles.subSection}>
             <Text style={styles.subLabel}>Regionally Important Code</Text>
-            {["Rf", "Rg", "Rk"].map((code) => (
+            {["Rf", "Rf/Rk", "Rg", "Rk"].map((code) => (
               <Pressable
                 key={code}
                 onPress={() => setAquiferCode(code)}
@@ -139,7 +139,7 @@ export default function DeskStudyTab(props: DeskStudyProps) {
         {aquiferCategory === "Locally Important" && (
           <View style={styles.subSection}>
             <Text style={styles.subLabel}>Locally Important Code</Text>
-            {["Lg", "Ll", "Lm"].map((code) => (
+            {["Lk", "Ll", "Lm"].map((code) => (
               <Pressable
                 key={code}
                 onPress={() => setAquiferCode(code)}
@@ -262,7 +262,7 @@ export default function DeskStudyTab(props: DeskStudyProps) {
         <View style={styles.row}>
           <Text style={styles.label}>Groundwater Protection Response</Text>
           <View style={styles.chipContainer}>
-            {["R1", "R2¹", "R2²", "R2³", "R2", "R3¹", "R3²", "R4"].map((code) => (
+            {["R1", "R2¹", "R2²", "R2³", "R2⁴", "R2", "R3¹", "R3²", "R4"].map((code) => (
               <Pressable
                 key={code}
                 onPress={() => setGwProtectionResponse(code)}
