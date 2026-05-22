@@ -38,10 +38,10 @@ const SectionHeader = ({ title }: { title: string }) => (
 
 // API Configuration
 // Use Railway in production, local server in development
-// To test with local server: change to "http://192.168.0.51:8080"
+// To test with local server: change to "http://192.168.1.35:8080"
 // To test with Railway: change to "https://web-production-133cf.up.railway.app"
 const API_BASE = __DEV__
-  ? "http://192.168.0.51:8000"  // Local development — update IP if your machine's IP changes
+  ? "http://192.168.1.35:8000"  // Local development — update IP if your machine's IP changes
   : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 
@@ -248,10 +248,10 @@ export default function Index() {
 
 // API Configuration
 // Use Railway in production, local server in development
-// To test with local server: change to "http://192.168.0.51:8080"
+// To test with local server: change to "http://192.168.1.35:8080"
 // To test with Railway: change to "https://web-production-133cf.up.railway.app"
 const API_BASE = __DEV__
-  ? "http://192.168.0.51:8000"  // Local development — update IP if your machine's IP changes
+  ? "http://192.168.1.35:8000"  // Local development — update IP if your machine's IP changes
   : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 const TANK_TYPES = [
