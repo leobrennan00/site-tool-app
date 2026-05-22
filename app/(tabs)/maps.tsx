@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Platform, Pressable, ActivityIndicator } from "react-native";
 
-const API_BASE = "http://192.168.1.39:8000";
+const API_BASE = "http://192.168.0.51:8000";
 
 interface MapsProps {
   lat: string;
@@ -40,18 +40,20 @@ export default function MapsTab(props: MapsProps) {
     setEircodeErr(null);
     setEircodeLoading(true);
     try {
+      // ArcGIS World Geocoding — better Irish Eircode coverage than Nominatim
       const url =
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", Ireland")}&format=json&limit=1&countrycodes=ie`;
-      const res = await fetch(url, {
-        headers: { "User-Agent": "SiteReportApp/1.0" },
-      });
+        `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates` +
+        `?SingleLine=${encodeURIComponent(query + ", Ireland")}&countryCode=IRL&maxLocations=1&f=json&outFields=`;
+      const res = await fetch(url);
       const data = await res.json();
-      if (data && data.length > 0) {
-        setLat(String(parseFloat(data[0].lat).toFixed(6)));
-        setLon(String(parseFloat(data[0].lon).toFixed(6)));
+      const candidates = data?.candidates ?? [];
+      if (candidates.length > 0 && candidates[0].score >= 70) {
+        const { x, y } = candidates[0].location;
+        setLat(String(parseFloat(y).toFixed(6)));
+        setLon(String(parseFloat(x).toFixed(6)));
         setEircodeErr(null);
       } else {
-        setEircodeErr("Eircode not found. Check the code and try again.");
+        setEircodeErr("Eircode not found. Check the code or enter coordinates manually.");
       }
     } catch {
       setEircodeErr("Could not look up Eircode. Check your connection.");
