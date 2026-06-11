@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable } from "react-native";
+import GoogleDrivePicker from "../components/GoogleDrivePicker";
 
 interface SiteAssessorProps {
   assCompany: string;
@@ -27,6 +28,7 @@ interface SiteAssessorProps {
   API_BASE: string;
   planPdfUrls: string[];
   pickAndUploadPlans: () => void;
+  onDrivePlanPicked: (fileId: string, name: string, accessToken: string) => void;
   generateReport: () => void;
 }
 
@@ -47,8 +49,11 @@ export default function SiteAssessorTab(props: SiteAssessorProps) {
     API_BASE,
     planPdfUrls,
     pickAndUploadPlans,
+    onDrivePlanPicked,
     generateReport,
   } = props;
+
+  const [drivePickerVisible, setDrivePickerVisible] = useState(false);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -196,15 +201,29 @@ export default function SiteAssessorTab(props: SiteAssessorProps) {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Attachments</Text>
 
-        <Pressable onPress={pickAndUploadPlans} style={styles.attachButton}>
-          <Text style={styles.attachButtonText}>Attach plan PDFs</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable onPress={pickAndUploadPlans} style={[styles.attachButton, { flex: 1 }]}>
+            <Text style={styles.attachButtonText}>From Device</Text>
+          </Pressable>
+          <Pressable onPress={() => setDrivePickerVisible(true)} style={[styles.attachButton, { flex: 1, backgroundColor: "#4A90E2" }]}>
+            <Text style={styles.attachButtonText}>Google Drive</Text>
+          </Pressable>
+        </View>
 
         {planPdfUrls.length > 0 && (
           <View style={{ marginTop: 12 }}>
             <Text style={styles.label}>{planPdfUrls.length} PDF(s) attached</Text>
           </View>
         )}
+
+        <GoogleDrivePicker
+          visible={drivePickerVisible}
+          onClose={() => setDrivePickerVisible(false)}
+          onFilePicked={(fileId, name, token) => {
+            setDrivePickerVisible(false);
+            onDrivePlanPicked(fileId, name, token);
+          }}
+        />
       </View>
 
       <View style={styles.card}>

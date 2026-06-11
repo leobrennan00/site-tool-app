@@ -1549,8 +1549,36 @@ const TANK_TYPES = [
     }
   }
 
+  async function onDrivePlanPicked(fileId: string, fileName: string, accessToken: string) {
+    try {
+      const driveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+      const dlRes = await fetch(driveUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!dlRes.ok) {
+        Alert.alert("Download error", "Could not download the file from Google Drive.");
+        return;
+      }
+      const blob = await dlRes.blob();
 
+      const formData = new FormData();
+      formData.append("file", blob as any, fileName);
 
+      const res = await fetch(`${API_BASE}/upload_plan_pdf`, { method: "POST", body: formData });
+      if (!res.ok) {
+        Alert.alert("Upload error", "Could not upload the plan PDF.");
+        return;
+      }
+      const json = await res.json();
+      if (json?.url) {
+        setPlanPdfUrls((prev) => [...prev, String(json.url)]);
+        Alert.alert("Plan added", `"${fileName}" attached to this report.`);
+      }
+    } catch (err: any) {
+      console.error("onDrivePlanPicked error", err);
+      Alert.alert("Error", String(err?.message || err));
+    }
+  }
 
   async function generateReport() {
     try {
@@ -3262,6 +3290,7 @@ return (
         API_BASE={API_BASE}
         planPdfUrls={planPdfUrls}
         pickAndUploadPlans={pickAndUploadPlans}
+        onDrivePlanPicked={onDrivePlanPicked}
         generateReport={generateReport}
       />
     )}
