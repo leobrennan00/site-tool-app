@@ -20,6 +20,10 @@ const GOOGLE_CLIENT_ID_IOS = Constants.expoConfig?.extra?.googleClientIdIos ?? "
 const GOOGLE_CLIENT_ID_ANDROID = Constants.expoConfig?.extra?.googleClientIdAndroid ?? "";
 const CLIENT_ID = Platform.OS === "ios" ? GOOGLE_CLIENT_ID_IOS : GOOGLE_CLIENT_ID_ANDROID;
 
+// Google native OAuth clients use a reversed-client-ID scheme for redirect URIs
+const IOS_REDIRECT_SCHEME = `com.googleusercontent.apps.${GOOGLE_CLIENT_ID_IOS.replace(".apps.googleusercontent.com", "")}`;
+const ANDROID_REDIRECT_SCHEME = `com.googleusercontent.apps.${GOOGLE_CLIENT_ID_ANDROID.replace(".apps.googleusercontent.com", "")}`;
+
 const DISCOVERY = {
   authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
   tokenEndpoint: "https://oauth2.googleapis.com/token",
@@ -42,7 +46,11 @@ export default function GoogleDrivePicker({ visible, onClose, onFilePicked }: Pr
   const [loading, setLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: "sitetoolapp" });
+  const redirectUri = AuthSession.makeRedirectUri({
+    native: Platform.OS === "ios"
+      ? `${IOS_REDIRECT_SCHEME}:/oauth2redirect`
+      : `${ANDROID_REDIRECT_SCHEME}:/oauth2redirect`,
+  });
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {

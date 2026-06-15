@@ -12,7 +12,14 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.doublewestdesign.sitetool",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.214142599203-nc58nd5k0ip1ken55d570qgfm6ufolia"
+            ]
+          }
+        ]
       }
     },
     "android": {
