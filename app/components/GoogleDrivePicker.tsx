@@ -49,19 +49,31 @@ export default function GoogleDrivePicker({ visible, onClose, onFilePicked }: Pr
       clientId: CLIENT_ID,
       redirectUri,
       scopes: ["https://www.googleapis.com/auth/drive.readonly"],
-      responseType: "token",
-      usePKCE: false,
+      responseType: AuthSession.ResponseType.Code,
+      usePKCE: true,
     },
     DISCOVERY
   );
 
   React.useEffect(() => {
-    if (response?.type === "success") {
-      const token = (response as any).params?.access_token;
-      if (token) {
-        setAccessToken(token);
-        fetchFiles(token);
-      }
+    if (response?.type === "success" && response.params?.code) {
+      AuthSession.exchangeCodeAsync(
+        {
+          clientId: CLIENT_ID,
+          redirectUri,
+          code: response.params.code,
+          extraParams: request?.codeVerifier ? { code_verifier: request.codeVerifier } : {},
+        },
+        DISCOVERY
+      ).then((tokenResponse) => {
+        const token = tokenResponse.accessToken;
+        if (token) {
+          setAccessToken(token);
+          fetchFiles(token);
+        }
+      }).catch(() => {
+        Alert.alert("Auth error", "Could not complete Google sign-in.");
+      });
     }
   }, [response]);
 
