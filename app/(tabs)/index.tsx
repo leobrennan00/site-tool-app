@@ -1551,29 +1551,37 @@ const TANK_TYPES = [
 
   async function onDrivePlanPicked(fileId: string, fileName: string, accessToken: string) {
     try {
+      const safeFileName = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
       const driveUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-      const dlRes = await fetch(driveUrl, {
+
+      // Download to local cache via expo-file-system/legacy so we get a proper file URI
+      const LegacyFS = await import("expo-file-system/legacy");
+      const localUri = `${LegacyFS.cacheDirectory}drive_${Date.now()}_${safeFileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+
+      const dl = await LegacyFS.downloadAsync(driveUrl, localUri, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!dlRes.ok) {
+
+      if (dl.status !== 200) {
         Alert.alert("Download error", "Could not download the file from Google Drive.");
         return;
       }
-      const blob = await dlRes.blob();
-      const safeFileName = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
 
+      // Upload using the same { uri, name, type } format as device uploads — works reliably in RN
       const formData = new FormData();
-      formData.append("file", blob as any, safeFileName);
+      formData.append("file", { uri: dl.uri, name: safeFileName, type: "application/pdf" } as any);
 
       const res = await fetch(`${API_BASE}/upload_plan_pdf`, { method: "POST", body: formData });
       if (!res.ok) {
+        const txt = await res.text();
+        console.warn("Drive plan upload failed:", txt);
         Alert.alert("Upload error", "Could not upload the plan PDF.");
         return;
       }
       const json = await res.json();
       if (json?.url) {
         setPlanPdfUrls((prev) => [...prev, String(json.url)]);
-        Alert.alert("Plan added", `"${fileName}" attached to this report.`);
+        Alert.alert("Plan added", `"${safeFileName}" attached to this report.`);
       }
     } catch (err: any) {
       console.error("onDrivePlanPicked error", err);
