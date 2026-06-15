@@ -1559,11 +1559,11 @@ const TANK_TYPES = [
         Alert.alert("Download error", "Could not download the file from Google Drive.");
         return;
       }
-      const arrayBuffer = await dlRes.arrayBuffer();
-      const pdfBlob = new Blob([arrayBuffer], { type: "application/pdf" });
+      const blob = await dlRes.blob();
+      const safeFileName = fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
 
       const formData = new FormData();
-      formData.append("file", pdfBlob as any, fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`);
+      formData.append("file", blob as any, safeFileName);
 
       const res = await fetch(`${API_BASE}/upload_plan_pdf`, { method: "POST", body: formData });
       if (!res.ok) {
