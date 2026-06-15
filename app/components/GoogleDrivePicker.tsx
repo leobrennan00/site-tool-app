@@ -50,6 +50,7 @@ export default function GoogleDrivePicker({ visible, onClose, onFilePicked }: Pr
       redirectUri,
       scopes: ["https://www.googleapis.com/auth/drive.readonly"],
       responseType: "token",
+      usePKCE: false,
     },
     DISCOVERY
   );
