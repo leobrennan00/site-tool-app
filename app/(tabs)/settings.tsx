@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert, Image } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, Alert, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
+import { Brand, Font } from '@/constants/theme';
+import { Card, CardTitle, FormInput, PrimaryBtn, GradientHero } from '@/components/ui/kit';
+import { IcoSignOut } from '@/components/ui/icons';
 
 interface SettingsProps {
   onClose: () => void;
@@ -22,7 +25,7 @@ export interface AssessorDefaults {
 }
 
 export default function SettingsTab(props: SettingsProps) {
-  const { onClose, onSave } = props;
+  const { onSave } = props;
 
   const [company, setCompany] = useState('');
   const [prefix, setPrefix] = useState('');
@@ -37,35 +40,31 @@ export default function SettingsTab(props: SettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  useEffect(() => { loadSettings(); }, []);
 
   async function loadSettings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
       const { data, error } = await supabase
         .from('profiles')
         .select('assessor_defaults')
         .eq('id', user.id)
         .single();
-
       if (error) {
         console.error('Failed to load settings:', error);
       } else if (data?.assessor_defaults) {
-        const defaults = data.assessor_defaults;
-        setCompany(defaults.company || '');
-        setPrefix(defaults.prefix || '');
-        setFirstName(defaults.firstName || '');
-        setSurname(defaults.surname || '');
-        setAddress(defaults.address || '');
-        setQualifications(defaults.qualifications || '');
-        setPhone(defaults.phone || '');
-        setEmail(defaults.email || '');
-        setIndemnity(defaults.indemnity || '');
-        setSignatureUrl(defaults.signatureUrl || null);
+        const d = data.assessor_defaults;
+        setCompany(d.company || '');
+        setPrefix(d.prefix || '');
+        setFirstName(d.firstName || '');
+        setSurname(d.surname || '');
+        setAddress(d.address || '');
+        setQualifications(d.qualifications || '');
+        setPhone(d.phone || '');
+        setEmail(d.email || '');
+        setIndemnity(d.indemnity || '');
+        setSignatureUrl(d.signatureUrl || null);
       }
     } catch (err) {
       console.error('Error loading settings:', err);
@@ -77,45 +76,32 @@ export default function SettingsTab(props: SettingsProps) {
   async function pickAndUploadSignature() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Error', 'Not authenticated');
-        return;
-      }
+      if (!user) { Alert.alert('Error', 'Not authenticated'); return; }
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         quality: 0.8,
       });
-
       if (result.canceled) return;
 
       const uri = result.assets[0].uri;
       const fileName = `signature_${user.id}_${Date.now()}.jpg`;
       const filePath = `signatures/${fileName}`;
 
-      // Upload to Supabase Storage
       const response = await fetch(uri);
       const blob = await response.blob();
 
       const { error: uploadError } = await supabase.storage
         .from('report-assets')
-        .upload(filePath, blob, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
-
+        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
       if (uploadError) {
         console.error('Upload error:', uploadError);
         Alert.alert('Error', 'Failed to upload signature');
         return;
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('report-assets')
-        .getPublicUrl(filePath);
-
+      const { data: urlData } = supabase.storage.from('report-assets').getPublicUrl(filePath);
       setSignatureUrl(urlData.publicUrl);
       Alert.alert('Success', 'Signature uploaded');
     } catch (err) {
@@ -128,29 +114,15 @@ export default function SettingsTab(props: SettingsProps) {
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('Error', 'Not authenticated');
-        return;
-      }
+      if (!user) { Alert.alert('Error', 'Not authenticated'); return; }
 
       const defaults: AssessorDefaults = {
-        company,
-        prefix,
-        firstName,
-        surname,
-        address,
-        qualifications,
-        phone,
-        email,
-        indemnity,
+        company, prefix, firstName, surname, address,
+        qualifications, phone, email, indemnity,
         signatureUrl: signatureUrl || undefined,
       };
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ assessor_defaults: defaults })
-        .eq('id', user.id);
-
+      const { error } = await supabase.from('profiles').update({ assessor_defaults: defaults }).eq('id', user.id);
       if (error) {
         console.error('Failed to save settings:', error);
         Alert.alert('Error', 'Failed to save settings');
@@ -166,287 +138,107 @@ export default function SettingsTab(props: SettingsProps) {
     }
   }
 
+  function handleSignOut() {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: async () => { await supabase.auth.signOut(); } },
+    ]);
+  }
+
+  const initials = `${firstName?.[0] || ''}${surname?.[0] || ''}`.toUpperCase() || 'SA';
+  const fullName = `${prefix} ${firstName} ${surname}`.replace(/\s+/g, ' ').trim();
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Loading...</Text>
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color={Brand.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Account Settings</Text>
-        <Text style={styles.subtitle}>
-          Set your default assessor details to auto-fill in new reports
-        </Text>
+    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.content}>
+      {/* Profile hero */}
+      <View style={styles.profileRow}>
+        <GradientHero style={styles.avatar}>
+          <Text style={styles.avatarText}>{initials}</Text>
+        </GradientHero>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text style={styles.profileName}>{fullName || 'Your Name'}</Text>
+          {company ? <Text style={styles.profileCompany}>{company}</Text> : null}
+        </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Default Assessor Details</Text>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Company Name</Text>
-          <TextInput
-            style={styles.input}
-            value={company}
-            onChangeText={setCompany}
-            placeholder="Enter company name"
-          />
-        </View>
-
-        <View style={styles.row}>
-          <View style={[styles.field, { flex: 1, marginRight: 8 }]}>
-            <Text style={styles.label}>Prefix</Text>
-            <TextInput
-              style={styles.input}
-              value={prefix}
-              onChangeText={setPrefix}
-              placeholder="Mr/Mrs/Dr"
-            />
-          </View>
-
-          <View style={[styles.field, { flex: 2 }]}>
-            <Text style={styles.label}>First Name</Text>
-            <TextInput
-              style={styles.input}
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="Enter first name"
-            />
-          </View>
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Surname</Text>
-          <TextInput
-            style={styles.input}
-            value={surname}
-            onChangeText={setSurname}
-            placeholder="Enter surname"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Address</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={address}
-            onChangeText={setAddress}
-            placeholder="Enter address"
-            multiline
-            numberOfLines={3}
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Qualifications</Text>
-          <TextInput
-            style={styles.input}
-            value={qualifications}
-            onChangeText={setQualifications}
-            placeholder="Enter qualifications"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Phone</Text>
-          <TextInput
-            style={styles.input}
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="Enter phone number"
-            keyboardType="phone-pad"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter email address"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Professional Indemnity Insurance</Text>
-          <TextInput
-            style={styles.input}
-            value={indemnity}
-            onChangeText={setIndemnity}
-            placeholder="Enter policy details"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Default E-Signature</Text>
-          <Text style={styles.fieldDescription}>
-            Upload a signature image to automatically include in new reports
-          </Text>
-          <Pressable
-            style={styles.signatureButton}
-            onPress={pickAndUploadSignature}
-          >
-            <Text style={styles.signatureButtonText}>
-              {signatureUrl ? 'Change Signature' : 'Upload Signature'}
-            </Text>
-          </Pressable>
-          {signatureUrl && (
-            <View style={styles.signaturePreview}>
-              <Image
-                source={{ uri: signatureUrl }}
-                style={styles.signatureImage}
-                resizeMode="contain"
-              />
+      <Card>
+        <CardTitle>Assessor Profile</CardTitle>
+        <View style={{ gap: 14 }}>
+          <FormInput label="Company" value={company} onChangeText={setCompany} placeholder="Company name" />
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <FormInput label="Prefix" value={prefix} onChangeText={setPrefix} placeholder="Mr/Mrs/Dr" />
             </View>
-          )}
+            <View style={{ flex: 2 }}>
+              <FormInput label="First Name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
+            </View>
+          </View>
+          <FormInput label="Surname" value={surname} onChangeText={setSurname} placeholder="Surname" />
+          <FormInput label="Address" value={address} onChangeText={setAddress} placeholder="Address" multiline />
+          <FormInput label="Qualifications" value={qualifications} onChangeText={setQualifications} placeholder="e.g. BEng, MIEI" />
+          <FormInput label="Professional Indemnity Insurance" value={indemnity} onChangeText={setIndemnity} placeholder="Policy details" />
         </View>
-      </View>
+      </Card>
 
-      <View style={styles.actions}>
-        <Pressable
-          style={[styles.button, styles.cancelButton]}
-          onPress={onClose}
-        >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </Pressable>
+      <Card>
+        <CardTitle>Contact</CardTitle>
+        <View style={{ gap: 14 }}>
+          <FormInput label="Email" value={email} onChangeText={setEmail} placeholder="email@company.ie" keyboardType="email-address" autoCapitalize="none" />
+          <FormInput label="Phone" value={phone} onChangeText={setPhone} placeholder="08x xxx xxxx" keyboardType="phone-pad" />
+        </View>
+      </Card>
 
-        <Pressable
-          style={[styles.button, styles.saveButton]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          <Text style={styles.saveButtonText}>
-            {saving ? 'Saving...' : 'Save Settings'}
-          </Text>
+      <Card>
+        <CardTitle>Default E-Signature</CardTitle>
+        <Text style={styles.hint}>Automatically included in new reports.</Text>
+        <Pressable style={styles.sigBtn} onPress={pickAndUploadSignature}>
+          <Text style={styles.sigBtnText}>{signatureUrl ? 'Change Signature' : 'Upload Signature'}</Text>
         </Pressable>
-      </View>
+        {signatureUrl ? (
+          <View style={styles.sigPreview}>
+            <Image source={{ uri: signatureUrl }} style={styles.sigImage} resizeMode="contain" />
+          </View>
+        ) : null}
+      </Card>
+
+      <PrimaryBtn title={saving ? 'Saving…' : 'Save Profile'} onPress={handleSave} disabled={saving} style={{ marginTop: 4, marginBottom: 14 }} />
+
+      <Pressable style={styles.signOutBtn} onPress={handleSignOut}>
+        <IcoSignOut size={18} color={Brand.danger} />
+        <Text style={styles.signOutText}>Sign Out</Text>
+      </Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Brand.bg },
+  content: { padding: 16, paddingBottom: 40 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, paddingHorizontal: 2 },
+  avatar: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#fff', fontSize: 22, fontFamily: Font.bold },
+  profileName: { fontSize: 18, fontFamily: Font.bold, color: Brand.text, letterSpacing: -0.3 },
+  profileCompany: { fontSize: 14, fontFamily: Font.regular, color: Brand.textSub, marginTop: 2 },
+  hint: { fontSize: 12, color: Brand.textMuted, marginBottom: 12, fontFamily: Font.regular },
+  sigBtn: {
+    borderWidth: 1.5, borderColor: Brand.primary, borderRadius: 12, paddingVertical: 12,
+    alignItems: 'center', backgroundColor: Brand.primaryTint,
   },
-  content: {
-    padding: 20,
+  sigBtnText: { color: Brand.primary, fontFamily: Font.semibold, fontSize: 15 },
+  sigPreview: { marginTop: 12, borderWidth: 1, borderColor: Brand.borderLight, borderRadius: 12, padding: 12, backgroundColor: Brand.bg, alignItems: 'center' },
+  sigImage: { width: 200, height: 90 },
+  signOutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Brand.dangerTint, borderWidth: 1.5, borderColor: Brand.danger,
+    borderRadius: 14, paddingVertical: 13,
   },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-  },
-  section: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
-  },
-  field: {
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 10,
-    fontSize: 14,
-    backgroundColor: '#fff',
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  fieldDescription: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 8,
-    fontStyle: 'italic',
-  },
-  signatureButton: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  signatureButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  signaturePreview: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
-    alignItems: 'center',
-  },
-  signatureImage: {
-    width: 200,
-    height: 100,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 8,
-  },
-  button: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 6,
-    minWidth: 120,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  saveButton: {
-    backgroundColor: '#007AFF',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  signOutText: { color: Brand.danger, fontFamily: Font.semibold, fontSize: 15 },
 });

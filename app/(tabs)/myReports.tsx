@@ -1,12 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
+import {
+  ScrollView, View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, RefreshControl,
+} from 'react-native';
 import { getUserReports, deleteReport, Report } from '../../lib/reports';
-import { supabase } from '../../lib/supabase';
+import { Brand, Font, Shadow } from '@/constants/theme';
+import { ProgressRing, StatusPill, GradientHero } from '@/components/ui/kit';
+import { IcoChevronRight, IcoPlus, IcoTrash } from '@/components/ui/icons';
 
 interface MyReportsProps {
   onLoadReport: (report: Report) => void;
   onNewReport: () => void;
   currentReportId: string | null;
+}
+
+const TOTAL_SECTIONS = 12;
+
+function computeProgress(r: Report): number {
+  const ci = r.client_info || {};
+  const ds = r.desk_study || {};
+  const va = r.visual_assessment || {};
+  const th = r.trial_hole || {};
+  const sp = r.subsurface_perc || {};
+  const sf = r.surface_perc || {};
+  const co = r.conclusion || {};
+  const dw = r.selected_dwwts || {};
+  const ts = r.treatment_systems || {};
+  const qa = r.quality_assurance || {};
+  const sa = r.site_assessor || {};
+  const checks = [
+    (r.map_urls?.length ?? 0) > 0 || (r.photo_urls?.length ?? 0) > 0,
+    !!(ci.firstName || ci.surname || ci.siteLocation),
+    !!(ds.soilType || ds.aquiferCategory || ds.vulnerability),
+    !!(va.landscapePosition || va.slope),
+    !!(th.trialDepth || th.thClassificationCol),
+    !!sp.likelySubsurfaceP,
+    !!sf.likelySurfaceP,
+    !!(co.dischargeRoute || co.suitableForDevelopment || co.unsatDepth),
+    !!(dw.dwwtsInstall || dw.dwwtsDischargeTo),
+    !!(ts.packagedType || ts.septTankCapacity),
+    !!(qa.qaInstall || qa.qaMaintenance),
+    !!(sa.assFirst || sa.assSurname || sa.assCompany),
+  ];
+  const done = checks.filter(Boolean).length;
+  return (done / TOTAL_SECTIONS) * 100;
 }
 
 export default function MyReportsTab(props: MyReportsProps) {
@@ -15,21 +51,17 @@ export default function MyReportsTab(props: MyReportsProps) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadReports();
-  }, []);
+  useEffect(() => { loadReports(); }, []);
 
   async function loadReports() {
     setLoading(true);
     const { data, error } = await getUserReports();
-
     if (error) {
       console.error('Failed to load reports:', error);
       Alert.alert('Error', 'Failed to load your reports');
     } else if (data) {
       setReports(data);
     }
-
     setLoading(false);
   }
 
@@ -39,25 +71,18 @@ export default function MyReportsTab(props: MyReportsProps) {
     setRefreshing(false);
   }
 
-  async function handleDelete(reportId: string) {
+  function handleDelete(reportId: string) {
     Alert.alert(
       'Delete Report',
       'Are you sure you want to delete this report? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: 'Delete', style: 'destructive',
           onPress: async () => {
             const { error } = await deleteReport(reportId);
-
-            if (error) {
-              Alert.alert('Error', 'Failed to delete report');
-            } else {
-              // Remove from list
-              setReports(reports.filter((r) => r.id !== reportId));
-              Alert.alert('Success', 'Report deleted');
-            }
+            if (error) Alert.alert('Error', 'Failed to delete report');
+            else setReports(reports.filter((r) => r.id !== reportId));
           },
         },
       ]
@@ -66,291 +91,117 @@ export default function MyReportsTab(props: MyReportsProps) {
 
   function formatDate(dateString: string): string {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4A90E2" />
-        <Text style={styles.loadingText}>Loading your reports...</Text>
+        <ActivityIndicator size="large" color={Brand.primary} />
+        <Text style={styles.loadingText}>Loading your reports…</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Reports</Text>
-        <Text style={styles.subtitle}>
-          View and manage your saved site assessment reports
-        </Text>
-      </View>
-
-      <Pressable style={styles.newReportButton} onPress={onNewReport}>
-        <Text style={styles.newReportButtonText}>+ Create New Report</Text>
+    <ScrollView
+      style={{ backgroundColor: Brand.bg }}
+      contentContainerStyle={styles.scroll}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Brand.primary} />}
+    >
+      {/* New Report CTA */}
+      <Pressable onPress={onNewReport}>
+        <GradientHero style={styles.cta}>
+          <View style={styles.ctaIcon}>
+            <IcoPlus size={24} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.ctaTitle}>New Report</Text>
+            <Text style={styles.ctaSub}>Start a new site assessment</Text>
+          </View>
+          <IcoChevronRight size={22} color="rgba(255,255,255,0.8)" />
+        </GradientHero>
       </Pressable>
 
-      <Pressable style={styles.refreshButton} onPress={handleRefresh} disabled={refreshing}>
-        <Text style={styles.refreshButtonText}>
-          {refreshing ? 'Refreshing...' : '↻ Refresh List'}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.signOutButton}
-        onPress={async () => {
-          Alert.alert(
-            'Sign Out',
-            'Are you sure you want to sign out?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Sign Out',
-                style: 'destructive',
-                onPress: async () => {
-                  await supabase.auth.signOut();
-                },
-              },
-            ]
-          );
-        }}
-      >
-        <Text style={styles.signOutButtonText}>Sign Out</Text>
-      </Pressable>
+      <Text style={styles.sectionLabel}>Recent Reports</Text>
 
       {reports.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateTitle}>No Reports Yet</Text>
-          <Text style={styles.emptyStateText}>
-            Create your first site assessment report to get started
-          </Text>
+          <Text style={styles.emptyStateText}>Create your first site assessment to get started</Text>
         </View>
       ) : (
-        <View style={styles.reportsList}>
-          {reports.map((report) => (
-            <View
+        reports.map((report) => {
+          const percent = computeProgress(report);
+          const ci = report.client_info || {};
+          const location = ci.siteLocation || '';
+          const title = report.site_name && report.site_name !== 'Untitled Report'
+            ? report.site_name
+            : `${ci.firstName || ''} ${ci.surname || ''}`.trim() || 'Untitled Report';
+          return (
+            <Pressable
               key={report.id}
-              style={[
-                styles.reportCard,
-                currentReportId === report.id && styles.currentReportCard,
-              ]}
+              style={styles.reportCard}
+              onPress={() => onLoadReport(report)}
+              onLongPress={() => handleDelete(report.id)}
             >
-              <View style={styles.reportHeader}>
-                <View style={styles.reportTitleRow}>
-                  <Text style={styles.reportTitle}>
-                    {report.site_name || 'Untitled Report'}
-                  </Text>
-                  {currentReportId === report.id && (
-                    <View style={styles.currentBadge}>
-                      <Text style={styles.currentBadgeText}>Current</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.reportMeta}>
-                  <Text style={styles.statusBadge}>
-                    {report.status === 'draft' ? '📝 Draft' : '✅ Completed'}
-                  </Text>
-                  <Text style={styles.reportDate}>
-                    Updated: {formatDate(report.updated_at)}
-                  </Text>
+              <ProgressRing size={52} stroke={5} percent={percent} variant="green" />
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text numberOfLines={1} style={styles.reportTitle}>{title}</Text>
+                {location ? <Text numberOfLines={1} style={styles.reportLoc}>{location}</Text> : null}
+                <View style={{ marginTop: 6 }}>
+                  <StatusPill status={report.status === 'completed' ? 'completed' : 'draft'} />
                 </View>
               </View>
-
-              <View style={styles.reportActions}>
-                <Pressable
-                  style={[styles.actionButton, styles.loadButton]}
-                  onPress={() => onLoadReport(report)}
-                  disabled={currentReportId === report.id}
-                >
-                  <Text style={styles.loadButtonText}>
-                    {currentReportId === report.id ? 'Currently Loaded' : 'Load Report'}
-                  </Text>
+              <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', height: 52 }}>
+                <Pressable hitSlop={10} onPress={() => handleDelete(report.id)} style={styles.deleteBtn}>
+                  <IcoTrash size={18} color={Brand.danger} />
                 </Pressable>
-
-                <Pressable
-                  style={[styles.actionButton, styles.deleteButton]}
-                  onPress={() => handleDelete(report.id)}
-                >
-                  <Text style={styles.deleteButtonText}>Delete</Text>
-                </Pressable>
+                <Text style={styles.reportDate}>{formatDate(report.updated_at)}</Text>
               </View>
-            </View>
-          ))}
-        </View>
+            </Pressable>
+          );
+        })
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    padding: 16,
-    paddingBottom: 40,
+  scroll: { padding: 16, paddingBottom: 40 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, backgroundColor: Brand.bg },
+  loadingText: { marginTop: 16, fontSize: 15, color: Brand.textSub, fontFamily: Font.regular },
+
+  cta: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    borderRadius: 18, padding: 16, marginBottom: 22, ...Shadow.floating,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
+  ctaIcon: {
+    width: 46, height: 46, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+  ctaTitle: { fontSize: 17, fontFamily: Font.bold, color: '#fff', letterSpacing: -0.2 },
+  ctaSub: { fontSize: 13, fontFamily: Font.regular, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+
+  sectionLabel: {
+    fontSize: 11, fontFamily: Font.bold, color: Brand.textMuted,
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12, marginLeft: 2,
   },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  newReportButton: {
-    backgroundColor: '#4A90E2',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  newReportButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  refreshButton: {
-    backgroundColor: '#F0F0F0',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  refreshButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  signOutButton: {
-    backgroundColor: '#FFF',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#E53935',
-  },
-  signOutButtonText: {
-    color: '#E53935',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyState: {
-    alignItems: 'center',
-    padding: 40,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-  reportsList: {
-    gap: 16,
-  },
+
+  emptyState: { alignItems: 'center', padding: 40 },
+  emptyStateTitle: { fontSize: 18, fontFamily: Font.semibold, color: Brand.text, marginBottom: 8 },
+  emptyStateText: { fontSize: 14, color: Brand.textSub, textAlign: 'center', fontFamily: Font.regular },
+
   reportCard: {
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Brand.surface, borderRadius: 18, padding: 14, marginBottom: 12,
+    borderWidth: 1, borderColor: Brand.borderLight, ...Shadow.card,
   },
-  currentReportCard: {
-    borderColor: '#4A90E2',
-    backgroundColor: '#F0F7FF',
+  deleteBtn: {
+    width: 30, height: 30, borderRadius: 8, backgroundColor: Brand.dangerTint,
+    alignItems: 'center', justifyContent: 'center',
   },
-  reportHeader: {
-    marginBottom: 16,
-  },
-  reportTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  reportTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    flex: 1,
-  },
-  currentBadge: {
-    backgroundColor: '#4A90E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  currentBadgeText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  reportMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  statusBadge: {
-    fontSize: 14,
-    color: '#666',
-  },
-  reportDate: {
-    fontSize: 12,
-    color: '#999',
-  },
-  reportActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  loadButton: {
-    backgroundColor: '#4A90E2',
-  },
-  loadButtonText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#E53935',
-  },
-  deleteButtonText: {
-    color: '#E53935',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  reportTitle: { fontSize: 15, fontFamily: Font.semibold, color: Brand.text },
+  reportLoc: { fontSize: 13, fontFamily: Font.regular, color: Brand.textSub, marginTop: 2 },
+  reportDate: { fontSize: 11, fontFamily: Font.regular, color: Brand.textMuted },
 });

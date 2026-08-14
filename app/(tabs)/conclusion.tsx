@@ -1,5 +1,7 @@
 import React from "react";
-import { ScrollView, View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { ScrollView, View, Text, StyleSheet } from "react-native";
+import { Brand, Font } from "@/constants/theme";
+import { Card, CardTitle, FormInput, CheckRow, RadioGroup } from "@/components/ui/kit";
 
 interface ConclusionProps {
   slope: string;
@@ -25,281 +27,91 @@ interface ConclusionProps {
 
 export default function ConclusionTab(props: ConclusionProps) {
   const {
-    slope,
-    setSlope,
-    sepDistancesMet,
-    setSepDistancesMet,
-    unsatDepth,
-    setUnsatDepth,
-    sPV,
-    ssPV,
-    suitableForDevelopment,
-    setSuitableForDevelopment,
-    optSepticTank,
-    setOptSepticTank,
-    optSecondary,
-    setOptSecondary,
-    optTertiary,
-    setOptTertiary,
-    dischargeRoute,
-    setDischargeRoute,
-    setCDirty,
+    slope, setSlope, sepDistancesMet, setSepDistancesMet, unsatDepth, setUnsatDepth,
+    sPV, ssPV, suitableForDevelopment, setSuitableForDevelopment,
+    optSepticTank, setOptSepticTank, optSecondary, setOptSecondary,
+    optTertiary, setOptTertiary, dischargeRoute, setDischargeRoute, setCDirty,
   } = props;
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Conclusion of Site Characterisation</Text>
-        <Text style={styles.subtitle}>
-          Site assessment summary and suitability determination
-        </Text>
+    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      {/* Derived value tiles */}
+      <View style={styles.tileRow}>
+        <View style={styles.tile}>
+          <Text style={styles.tileLabel}>Surface PV</Text>
+          <Text style={styles.tileValue}>{sPV != null ? sPV.toFixed(2) : "—"}</Text>
+        </View>
+        <View style={styles.tile}>
+          <Text style={styles.tileLabel}>Subsurface PV</Text>
+          <Text style={styles.tileValue}>{ssPV != null ? ssPV.toFixed(2) : "—"}</Text>
+        </View>
+        <View style={styles.tile}>
+          <Text style={styles.tileLabel}>Slope</Text>
+          <Text style={styles.tileValueSm} numberOfLines={2}>{slope || "—"}</Text>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Site Conditions</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Slope of proposed infiltration / treatment area</Text>
-          <TextInput
-            style={styles.input}
+      <Card>
+        <CardTitle>Site Conditions</CardTitle>
+        <View style={{ gap: 14 }}>
+          <FormInput
+            label="Slope of proposed infiltration / treatment area"
             value={slope}
             onChangeText={setSlope}
             placeholder="e.g. Relatively flat / Shallow / Steep"
           />
-        </View>
-
-        <Pressable
-          onPress={() => {
-            console.log('Before toggle:', sepDistancesMet);
-            setSepDistancesMet(!sepDistancesMet);
-            setCDirty((prev: any) => ({ ...prev, sepDistancesMet: true }));
-            console.log('After toggle:', !sepDistancesMet);
-          }}
-          style={[
-            styles.checkboxBtn,
-            {
-              marginBottom: 8,
-              backgroundColor: sepDistancesMet ? "#d9ead3" : "#EFEFEF",
-              borderWidth: 2,
-              borderColor: sepDistancesMet ? "#93c47d" : "#DDD"
-            }
-          ]}
-        >
-          <Text style={[styles.checkboxText, { fontWeight: sepDistancesMet ? "600" : "500" }]}>
-            {sepDistancesMet ? "✓" : "○"} All minimum separation distances met
-          </Text>
-        </Pressable>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Depth of unsaturated soil/subsoil beneath invert (m)</Text>
-          <TextInput
-            style={styles.input}
+          <CheckRow
+            label="All minimum separation distances met"
+            checked={sepDistancesMet}
+            onToggle={() => {
+              setSepDistancesMet(!sepDistancesMet);
+              setCDirty((prev: any) => ({ ...prev, sepDistancesMet: true }));
+            }}
+          />
+          <FormInput
+            label="Depth of unsaturated soil/subsoil beneath invert (m)"
             value={unsatDepth}
             onChangeText={setUnsatDepth}
             keyboardType="numeric"
             placeholder="e.g. 0.90"
           />
         </View>
-      </View>
+      </Card>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Percolation Test Results</Text>
-        <Text style={styles.note}>
-          These values are calculated from the Subsurface Perc and Surface Perc tabs
-        </Text>
-
-        <View style={{ flexDirection: "row", gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Surface Percolation Value</Text>
-            <TextInput
-              style={[styles.input, styles.readOnly]}
-              value={sPV != null ? sPV.toFixed(2) : ""}
-              editable={false}
-              placeholder="—"
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.label}>Sub-surface Percolation Value</Text>
-            <TextInput
-              style={[styles.input, styles.readOnly]}
-              value={ssPV != null ? ssPV.toFixed(2) : ""}
-              editable={false}
-              placeholder="—"
-            />
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Suitability Assessment</Text>
-
-        <View style={{ flexDirection: "column", gap: 8 }}>
-          <Pressable
-            onPress={() => setSuitableForDevelopment(false)}
-            style={[
-              styles.suitabilityBtn,
-              { backgroundColor: !suitableForDevelopment ? "#fce5cd" : "#efefef" }
-            ]}
-          >
-            <Text style={styles.suitabilityText}>Not Suitable for Development</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setSuitableForDevelopment(true)}
-            style={[
-              styles.suitabilityBtn,
-              { backgroundColor: suitableForDevelopment ? "#d9ead3" : "#efefef" }
-            ]}
-          >
-            <Text style={styles.suitabilityText}>Suitable for Development</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Suitable Options</Text>
-        <Text style={styles.note}>Select all applicable treatment system options</Text>
-
-        <View style={{ flexDirection: "column", gap: 8, marginTop: 8 }}>
-          <Pressable
-            onPress={() => setOptSepticTank(!optSepticTank)}
-            style={[
-              styles.optionBtn,
-              { backgroundColor: optSepticTank ? "#d9ead3" : "#efefef" }
-            ]}
-          >
-            <Text style={styles.optionText}>Septic tank system</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setOptSecondary(!optSecondary)}
-            style={[
-              styles.optionBtn,
-              { backgroundColor: optSecondary ? "#d9ead3" : "#efefef" }
-            ]}
-          >
-            <Text style={styles.optionText}>Secondary treatment + polishing filter</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setOptTertiary(!optTertiary)}
-            style={[
-              styles.optionBtn,
-              { backgroundColor: optTertiary ? "#d9ead3" : "#efefef" }
-            ]}
-          >
-            <Text style={styles.optionText}>Tertiary + infiltration/treatment area</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Discharge Route</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={dischargeRoute}
-          onChangeText={setDischargeRoute}
-          multiline
-          placeholder="e.g. Via subsoil to groundwater"
+      <Card>
+        <CardTitle>Suitability</CardTitle>
+        <RadioGroup
+          value={suitableForDevelopment ? "yes" : "no"}
+          onChange={(v) => setSuitableForDevelopment(v === "yes")}
+          options={[
+            { label: "Suitable for Development", value: "yes" },
+            { label: "Not Suitable for Development", value: "no" },
+          ]}
         />
-      </View>
+        <Text style={[styles.note, { marginTop: 14 }]}>Select all applicable treatment options</Text>
+        <View style={{ gap: 8 }}>
+          <CheckRow label="Septic tank system" checked={optSepticTank} onToggle={() => setOptSepticTank(!optSepticTank)} />
+          <CheckRow label="Secondary treatment + polishing filter" checked={optSecondary} onToggle={() => setOptSecondary(!optSecondary)} />
+          <CheckRow label="Tertiary + infiltration/treatment area" checked={optTertiary} onToggle={() => setOptTertiary(!optTertiary)} />
+        </View>
+      </Card>
+
+      <Card>
+        <CardTitle>Discharge Route</CardTitle>
+        <FormInput value={dischargeRoute} onChangeText={setDischargeRoute} multiline placeholder="e.g. Via subsoil to groundwater" />
+      </Card>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    padding: 16,
-    paddingBottom: 40,
+  tileRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
+  tile: {
+    flex: 1, backgroundColor: Brand.surface, borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: Brand.borderLight, alignItems: "center",
   },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#1A1A1A",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#666",
-    lineHeight: 20,
-  },
-  card: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1A1A1A",
-    marginBottom: 16,
-  },
-  row: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#DDD",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: "#FFF",
-  },
-  readOnly: {
-    backgroundColor: "#F5F5F5",
-    color: "#666",
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: "top",
-  },
-  note: {
-    fontSize: 13,
-    color: "#666",
-    fontStyle: "italic",
-    marginBottom: 12,
-  },
-  checkboxBtn: {
-    backgroundColor: "#EFEFEF",
-    padding: 14,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  checkboxText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#333",
-  },
-  suitabilityBtn: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  suitabilityText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  optionBtn: {
-    padding: 14,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  optionText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#333",
-  },
+  tileLabel: { fontSize: 10, fontFamily: Font.bold, color: Brand.textMuted, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6, textAlign: "center" },
+  tileValue: { fontSize: 22, fontFamily: Font.bold, color: Brand.primary },
+  tileValueSm: { fontSize: 13, fontFamily: Font.semibold, color: Brand.text, textAlign: "center" },
+  note: { fontSize: 12, color: Brand.textMuted, marginBottom: 10, fontFamily: Font.regular },
 });

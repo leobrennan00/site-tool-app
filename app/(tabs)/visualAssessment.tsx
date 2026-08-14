@@ -1,458 +1,111 @@
 import React from "react";
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from "react-native";
+import { ScrollView, View, Text, StyleSheet } from "react-native";
+import { Brand, Font } from "@/constants/theme";
+import { Card, CardTitle, FormInput, CheckRow } from "@/components/ui/kit";
 
 interface VisualAssessmentProps {
-  landscapePosition: string;
-  setLandscapePosition: (val: string) => void;
-  slope: string;
-  setSlope: (val: string) => void;
-  slopeComment: string;
-  setSlopeComment: (val: string) => void;
-  houses250m: string;
-  setHouses250m: (val: string) => void;
-  existingLandUse: string;
-  setExistingLandUse: (val: string) => void;
-  vegIndicators: string;
-  setVegIndicators: (val: string) => void;
-  gwFlowDirection: string;
-  setGwFlowDirection: (val: string) => void;
-  groundCondition: string;
-  setGroundCondition: (val: string) => void;
-  siteBoundaries: string;
-  setSiteBoundaries: (val: string) => void;
-  roads: string;
-  setRoads: (val: string) => void;
-  outcrops: string;
-  setOutcrops: (val: string) => void;
-  ponding: string;
-  setPonding: (val: string) => void;
-  lakes: string;
-  setLakes: (val: string) => void;
-  beachesShellfish: string;
-  setBeachesShellfish: (val: string) => void;
-  wetlands: string;
-  setWetlands: (val: string) => void;
-  karstFeatures: string;
-  setKarstFeatures: (val: string) => void;
-  watercourses: string;
-  setWatercourses: (val: string) => void;
-  drainageDitches: string;
-  setDrainageDitches: (val: string) => void;
-  springs: string;
-  setSprings: (val: string) => void;
-  wellsText: string;
-  setWellsText: (val: string) => void;
-  visualComments: string;
-  setVisualComments: (val: string) => void;
+  landscapePosition: string; setLandscapePosition: (v: string) => void;
+  slope: string; setSlope: (v: string) => void;
+  slopeComment: string; setSlopeComment: (v: string) => void;
+  houses250m: string; setHouses250m: (v: string) => void;
+  existingLandUse: string; setExistingLandUse: (v: string) => void;
+  vegIndicators: string; setVegIndicators: (v: string) => void;
+  gwFlowDirection: string; setGwFlowDirection: (v: string) => void;
+  groundCondition: string; setGroundCondition: (v: string) => void;
+  siteBoundaries: string; setSiteBoundaries: (v: string) => void;
+  roads: string; setRoads: (v: string) => void;
+  outcrops: string; setOutcrops: (v: string) => void;
+  ponding: string; setPonding: (v: string) => void;
+  lakes: string; setLakes: (v: string) => void;
+  beachesShellfish: string; setBeachesShellfish: (v: string) => void;
+  wetlands: string; setWetlands: (v: string) => void;
+  karstFeatures: string; setKarstFeatures: (v: string) => void;
+  watercourses: string; setWatercourses: (v: string) => void;
+  drainageDitches: string; setDrainageDitches: (v: string) => void;
+  springs: string; setSprings: (v: string) => void;
+  wellsText: string; setWellsText: (v: string) => void;
+  visualComments: string; setVisualComments: (v: string) => void;
 }
 
 export default function VisualAssessmentTab(props: VisualAssessmentProps) {
   const {
-    landscapePosition, setLandscapePosition,
-    slope, setSlope,
-    slopeComment, setSlopeComment,
-    houses250m, setHouses250m,
-    existingLandUse, setExistingLandUse,
-    vegIndicators, setVegIndicators,
-    gwFlowDirection, setGwFlowDirection,
-    groundCondition, setGroundCondition,
-    siteBoundaries, setSiteBoundaries,
-    roads, setRoads,
-    outcrops, setOutcrops,
-    ponding, setPonding,
-    lakes, setLakes,
-    beachesShellfish, setBeachesShellfish,
-    wetlands, setWetlands,
-    karstFeatures, setKarstFeatures,
-    watercourses, setWatercourses,
-    drainageDitches, setDrainageDitches,
-    springs, setSprings,
-    wellsText, setWellsText,
-    visualComments, setVisualComments,
+    landscapePosition, setLandscapePosition, slope, setSlope, slopeComment, setSlopeComment,
+    houses250m, setHouses250m, existingLandUse, setExistingLandUse, vegIndicators, setVegIndicators,
+    gwFlowDirection, setGwFlowDirection, groundCondition, setGroundCondition, siteBoundaries, setSiteBoundaries,
+    roads, setRoads, outcrops, setOutcrops, ponding, setPonding, lakes, setLakes,
+    beachesShellfish, setBeachesShellfish, wetlands, setWetlands, karstFeatures, setKarstFeatures,
+    watercourses, setWatercourses, drainageDitches, setDrainageDitches, springs, setSprings,
+    wellsText, setWellsText, visualComments, setVisualComments,
   } = props;
 
+  const slopeOpt = (val: string, label: string) => (
+    <CheckRow label={label} checked={slope === val} onToggle={() => setSlope(slope === val ? "" : val)} />
+  );
+
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Visual Assessment</Text>
-        <Text style={styles.subtitle}>
-          On-site observations and environmental features
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Site Characteristics</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Landscape Position</Text>
-          <TextInput
-            style={styles.input}
-            value={landscapePosition}
-            onChangeText={setLandscapePosition}
-            placeholder="e.g. Mid-slope / Hilltop / Valley floor"
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Slope</Text>
-          <View style={styles.checkboxGroup}>
-            <Pressable
-              style={styles.checkboxRow}
-              onPress={() => setSlope(slope === "Steep (>1.5)" ? "" : "Steep (>1.5)")}
-            >
-              <View style={[styles.checkbox, slope === "Steep (>1.5)" && styles.checkboxChecked]}>
-                {slope === "Steep (>1.5)" && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.checkboxLabel}>Steep (&gt;1.5)</Text>
-            </Pressable>
-
-            <Pressable
-              style={styles.checkboxRow}
-              onPress={() => setSlope(slope === "Shallow (1.5-1:20)" ? "" : "Shallow (1.5-1:20)")}
-            >
-              <View style={[styles.checkbox, slope === "Shallow (1.5-1:20)" && styles.checkboxChecked]}>
-                {slope === "Shallow (1.5-1:20)" && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.checkboxLabel}>Shallow (1.5-1:20)</Text>
-            </Pressable>
-
-            <Pressable
-              style={styles.checkboxRow}
-              onPress={() => setSlope(slope === "Relatively Flat (<1:20)" ? "" : "Relatively Flat (<1:20)")}
-            >
-              <View style={[styles.checkbox, slope === "Relatively Flat (<1:20)" && styles.checkboxChecked]}>
-                {slope === "Relatively Flat (<1:20)" && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.checkboxLabel}>Relatively Flat (&lt;1:20)</Text>
-            </Pressable>
+    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <Card>
+        <CardTitle>Landscape & Terrain</CardTitle>
+        <View style={{ gap: 14 }}>
+          <FormInput label="Landscape Position" value={landscapePosition} onChangeText={setLandscapePosition} placeholder="e.g. Mid-slope / Hilltop / Valley floor" />
+          <View>
+            <Text style={styles.label}>Slope</Text>
+            <View style={{ gap: 8 }}>
+              {slopeOpt("Steep (>1.5)", "Steep (>1.5)")}
+              {slopeOpt("Shallow (1.5-1:20)", "Shallow (1.5–1:20)")}
+              {slopeOpt("Relatively Flat (<1:20)", "Relatively Flat (<1:20)")}
+            </View>
           </View>
+          <FormInput label="Slope Comment" value={slopeComment} onChangeText={setSlopeComment} placeholder="e.g. Slight gradient to the south" />
+          <FormInput label="Houses (within 250 m)" value={houses250m} onChangeText={setHouses250m} placeholder="e.g. ~5 houses; nearest ~110 m NE" multiline />
+          <FormInput label="Existing Land Use" value={existingLandUse} onChangeText={setExistingLandUse} placeholder="e.g. Pasture / Tillage / Woodland" />
+          <FormInput label="Vegetation Indicators" value={vegIndicators} onChangeText={setVegIndicators} placeholder="e.g. Rushes present, improved grassland" multiline />
+          <FormInput label="Groundwater Flow Direction" value={gwFlowDirection} onChangeText={setGwFlowDirection} placeholder="e.g. Slight gradient to the south" />
+          <FormInput label="Ground Condition" value={groundCondition} onChangeText={setGroundCondition} placeholder="e.g. Firm and dry" multiline />
+          <FormInput label="Site Boundaries" value={siteBoundaries} onChangeText={setSiteBoundaries} placeholder="e.g. Hedges and trees" multiline />
         </View>
+      </Card>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Slope Comment</Text>
-          <TextInput
-            style={styles.input}
-            value={slopeComment}
-            onChangeText={setSlopeComment}
-            placeholder="e.g. Slight gradient to the south"
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Houses (within 250 m)</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={houses250m}
-            onChangeText={setHouses250m}
-            placeholder="e.g. ~5 houses within 250 m; nearest ~110 m NE"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Existing Land Use</Text>
-          <TextInput
-            style={styles.input}
-            value={existingLandUse}
-            onChangeText={setExistingLandUse}
-            placeholder="e.g. Pasture / Tillage / Woodland"
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Vegetation Indicators</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={vegIndicators}
-            onChangeText={setVegIndicators}
-            placeholder="e.g. Rushes present, improved grassland"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Groundwater Flow Direction</Text>
-          <TextInput
-            style={styles.input}
-            value={gwFlowDirection}
-            onChangeText={setGwFlowDirection}
-            placeholder="e.g. Slight gradient to the south"
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Ground Condition</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={groundCondition}
-            onChangeText={setGroundCondition}
-            placeholder="e.g. Firm and dry"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Site Boundaries</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={siteBoundaries}
-            onChangeText={setSiteBoundaries}
-            placeholder="e.g. Hedges and trees"
-            multiline
-          />
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Surface Features</Text>
+      <Card>
+        <CardTitle>Surface Features</CardTitle>
         <Text style={styles.note}>Within a minimum of 250 m (note distances in metres)</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Roads</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={roads}
-            onChangeText={setRoads}
-            placeholder="e.g. Local road; nearest ~60 m W"
-            multiline
-          />
+        <View style={{ gap: 14 }}>
+          <FormInput label="Roads" value={roads} onChangeText={setRoads} placeholder="e.g. Local road; nearest ~60 m W" multiline />
+          <FormInput label="Outcrops (Bedrock and/or Subsoil)" value={outcrops} onChangeText={setOutcrops} placeholder="e.g. None observed within 250 m" multiline />
         </View>
+      </Card>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Outcrops (Bedrock and/or Subsoil)</Text>
-          <TextInput
-            style={[styles.input, styles.textAreaLarge]}
-            value={outcrops}
-            onChangeText={setOutcrops}
-            placeholder="e.g. None observed within 250 m"
-            multiline
-          />
+      <Card>
+        <CardTitle>Environmental Features</CardTitle>
+        <View style={{ gap: 14 }}>
+          <FormInput label="Surface Water Ponding" value={ponding} onChangeText={setPonding} placeholder="e.g. None / isolated shallow pooling NE" multiline />
+          <FormInput label="Lakes" value={lakes} onChangeText={setLakes} placeholder="e.g. None within 250 m" multiline />
+          <FormInput label="Beaches / Shellfish Areas" value={beachesShellfish} onChangeText={setBeachesShellfish} placeholder="e.g. None within study area" multiline />
+          <FormInput label="Wetlands" value={wetlands} onChangeText={setWetlands} placeholder="e.g. None" multiline />
+          <FormInput label="Karst Features" value={karstFeatures} onChangeText={setKarstFeatures} placeholder="e.g. None visible" multiline />
+          <FormInput label="Watercourses / Streams" value={watercourses} onChangeText={setWatercourses} placeholder="e.g. None; note distance, direction, water level" multiline />
+          <FormInput label="Drainage Ditches*" value={drainageDitches} onChangeText={setDrainageDitches} placeholder="e.g. None / open ditch ~40 m S flowing E→W" multiline />
+          <FormInput label="Springs*" value={springs} onChangeText={setSprings} placeholder="e.g. None observed" multiline />
+          <FormInput label="Wells*" value={wellsText} onChangeText={setWellsText} placeholder="e.g. None; note distance/direction and water level" multiline />
         </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Water Features</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Surface Water Ponding</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={ponding}
-            onChangeText={setPonding}
-            placeholder="e.g. None / isolated shallow pooling near NE corner"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Lakes</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={lakes}
-            onChangeText={setLakes}
-            placeholder="e.g. None within 250 m"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Beaches / Shellfish Areas</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={beachesShellfish}
-            onChangeText={setBeachesShellfish}
-            placeholder="e.g. None within study area"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Wetlands</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={wetlands}
-            onChangeText={setWetlands}
-            placeholder="e.g. None"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Karst Features</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={karstFeatures}
-            onChangeText={setKarstFeatures}
-            placeholder="e.g. None visible"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Watercourses / Streams</Text>
-          <TextInput
-            style={[styles.input, styles.textAreaLarge]}
-            value={watercourses}
-            onChangeText={setWatercourses}
-            placeholder="e.g. None; if present note distance, direction, and observed water level"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Drainage Ditches*</Text>
-          <TextInput
-            style={[styles.input, styles.textAreaMedium]}
-            value={drainageDitches}
-            onChangeText={setDrainageDitches}
-            placeholder="e.g. None / open ditch ~40 m S flowing E→W"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Springs*</Text>
-          <TextInput
-            style={[styles.input, styles.textAreaMedium]}
-            value={springs}
-            onChangeText={setSprings}
-            placeholder="e.g. None observed"
-            multiline
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Wells*</Text>
-          <TextInput
-            style={[styles.input, styles.textAreaLarge]}
-            value={wellsText}
-            onChangeText={setWellsText}
-            placeholder="e.g. None; if present note distance/direction and water level"
-            multiline
-          />
-        </View>
-
         <Text style={styles.note}>*Note and record water level</Text>
-      </View>
+      </Card>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Visual Assessment Comments</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Comments</Text>
-          <TextInput
-            style={[styles.input, styles.textAreaLarge]}
-            value={visualComments}
-            onChangeText={setVisualComments}
-            placeholder="Integrate observations: suitability, targets at risk, separation distances, proposed system location, etc."
-            multiline
-          />
-        </View>
-      </View>
+      <Card>
+        <CardTitle>Comments</CardTitle>
+        <FormInput
+          label="Visual Assessment Comments"
+          value={visualComments}
+          onChangeText={setVisualComments}
+          placeholder="Integrate observations: suitability, targets at risk, separation distances, proposed system location, etc."
+          multiline
+        />
+      </Card>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#1A1A1A",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#666",
-    lineHeight: 20,
-  },
-  card: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1A1A1A",
-    marginBottom: 16,
-  },
-  note: {
-    fontSize: 13,
-    color: "#666",
-    fontStyle: "italic",
-    marginBottom: 12,
-  },
-  row: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#DDD",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: "#FFF",
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: "top",
-  },
-  textAreaMedium: {
-    height: 120,
-    textAlignVertical: "top",
-  },
-  textAreaLarge: {
-    height: 140,
-    textAlignVertical: "top",
-  },
-  checkboxGroup: {
-    gap: 12,
-  },
-  checkboxRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 2,
-    borderColor: "#4A90E2",
-    borderRadius: 4,
-    backgroundColor: "#FFF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  checkboxChecked: {
-    backgroundColor: "#4A90E2",
-  },
-  checkmark: {
-    color: "#FFF",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  checkboxLabel: {
-    fontSize: 16,
-    color: "#333",
-  },
+  label: { fontSize: 12, fontFamily: Font.bold, color: Brand.textSub, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 },
+  note: { fontSize: 12, color: Brand.textMuted, marginBottom: 12, fontFamily: Font.regular },
 });

@@ -26,6 +26,11 @@ import SiteAssessorTab from "./siteAssessor";
 import MyReportsTab from "./myReports";
 import SettingsTab, { AssessorDefaults } from "./settings";
 import Sidebar from "./sidebar";
+import { Brand, SectionMeta } from "@/constants/theme";
+import { AppHeader } from "@/components/ui/kit";
+import { BottomTabBar } from "@/components/ui/BottomTabBar";
+import { ReportOverview, SectionId } from "@/components/ui/ReportOverview";
+import { IcoPlus } from "@/components/ui/icons";
 
 
 
@@ -38,10 +43,10 @@ const SectionHeader = ({ title }: { title: string }) => (
 
 // API Configuration
 // Use Railway in production, local server in development
-// To test with local server: change to "http://192.168.1.35:8080"
+// To test with local server: change to "http://192.168.0.51:8080"
 // To test with Railway: change to "https://web-production-133cf.up.railway.app"
 const API_BASE = __DEV__
-  ? "http://192.168.1.35:8000"  // Local development — update IP if your machine's IP changes
+  ? "http://192.168.0.51:8000"  // Local development — update IP if your machine's IP changes
   : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 
@@ -61,6 +66,11 @@ export default function Index() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [assessorDefaults, setAssessorDefaults] = useState<AssessorDefaults | null>(null);
   const [mainView, setMainView] = useState<'currentReport' | 'myReports' | 'settings'>('myReports');
+
+  // Report Overview navigation: null = show overview hub, otherwise show that section form
+  const [currentSection, setCurrentSection] = useState<SectionId | null>(null);
+  const [currentReportStatus, setCurrentReportStatus] = useState<'draft' | 'completed'>('draft');
+  const [generating, setGenerating] = useState(false);
 
   // Ref for tab ScrollView to enable auto-scrolling
   const tabScrollViewRef = useRef<ScrollView>(null);
@@ -248,10 +258,10 @@ export default function Index() {
 
 // API Configuration
 // Use Railway in production, local server in development
-// To test with local server: change to "http://192.168.1.35:8080"
+// To test with local server: change to "http://192.168.0.51:8080"
 // To test with Railway: change to "https://web-production-133cf.up.railway.app"
 const API_BASE = __DEV__
-  ? "http://192.168.1.35:8000"  // Local development — update IP if your machine's IP changes
+  ? "http://192.168.0.51:8000"  // Local development — update IP if your machine's IP changes
   : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 const TANK_TYPES = [
@@ -1413,6 +1423,30 @@ const TANK_TYPES = [
   }
 }
 
+  async function generateSignature() {
+    const name = `${assFirst} ${assSurname}`.trim();
+    if (!name) {
+      Alert.alert("Name required", "Enter your first and last name before generating a signature.");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/generate_signature?name=${encodeURIComponent(name)}`);
+      if (!res.ok) {
+        const txt = await res.text();
+        console.warn("Signature generation failed:", txt);
+        Alert.alert("Error", "Could not generate signature.");
+        return;
+      }
+      const json = await res.json();
+      if (json?.url) {
+        setSignatureUrl(String(json.url));
+        Alert.alert("Signature generated", "Auto-generated e-signature added to the report.");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", String(err?.message || err));
+    }
+  }
+
   async function pickAndUploadSignature() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -2264,11 +2298,11 @@ const TANK_TYPES = [
 
       // Set the current report ID
       setCurrentReportId(report.id);
+      setCurrentReportStatus(report.status || 'draft');
 
-      // Switch to maps tab
+      // Land on the Report Overview hub
+      setCurrentSection(null);
       setCurrentTab('maps');
-
-      Alert.alert('Report Loaded', `Loaded: ${report.site_name}`);
     } catch (error) {
       console.error('Failed to load report:', error);
       Alert.alert('Error', 'Failed to load report data');
@@ -2510,9 +2544,9 @@ const TANK_TYPES = [
         }
 
         setCurrentReportId(data.id);
+        setCurrentReportStatus('draft');
+        setCurrentSection(null);
         setCurrentTab('maps');
-
-        Alert.alert('New Report Created', 'Start filling in your assessment');
       }
     } catch (error) {
       console.error('Failed to create report:', error);
@@ -2621,6 +2655,43 @@ const TANK_TYPES = [
           );
         }
       }, 50);
+    }
+  };
+
+  // Derive per-section completion from filled fields (presentational only).
+  const sectionsComplete: Record<string, boolean> = {
+    photos: !!(lat && lon) || imgUris.length > 0 || photoUrls.length > 0,
+    clientInfo: !!(firstName || surname || siteLocation),
+    deskStudy: !!(soilType || aquiferCategory || vulnerability),
+    visualAssessment: !!(landscapePosition || slope),
+    trialHole: !!(trialDepth || thClassificationCol),
+    subsurfacePerc: !!likelySubsurfaceP,
+    surfacePerc: !!likelySurfaceP,
+    conclusion: !!(dischargeRoute || suitableForDevelopment || unsatDepth),
+    selectedDwwts: !!(dwwtsInstall || dwwtsDischargeTo),
+    treatmentSystems: !!(packagedType || septTankCapacity),
+    qualityAssurance: !!(qaInstall || qaMaintenance),
+    siteAssessor: !!(assFirst || assSurname || assCompany),
+  };
+
+  // Open a section form. The 'photos' tile opens the combined Location/Maps/Photos view.
+  const openSection = (id: SectionId) => {
+    setCurrentSection(id);
+    if (id === 'photos') {
+      setCurrentTab('maps');
+    } else {
+      setCurrentTab(id as typeof currentTab);
+    }
+  };
+
+  // Wrap report generation with a busy flag for the sticky button.
+  const handleGenerate = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      await generateReport();
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -2792,176 +2863,102 @@ const TANK_TYPES = [
     return <Auth />;
   }
 
-// inside your component's return:
 return (
   <SafeAreaView style={styles.container}>
-    {/* Top Navigation Bar */}
-    <View style={styles.topBar}>
-      <Pressable style={styles.menuButton} onPress={() => setShowSidebar(true)}>
-        <Text style={styles.menuIcon}>☰</Text>
-      </Pressable>
-      <Text style={styles.topBarTitle}>
-        {mainView === 'currentReport' && currentReportId ? 'Current Report' :
-         mainView === 'settings' ? 'Settings' : 'My Reports'}
-      </Text>
-      <View style={styles.menuButton} />
-    </View>
-
-    {/* Conditionally render based on mainView */}
-    {mainView === 'currentReport' && currentReportId && (
+    {/* My Reports view */}
+    {mainView === 'myReports' && (
       <>
-        {/* Tab Switcher */}
-        <View style={styles.tabSwitcherWrapper}>
-      <ScrollView
-        ref={tabScrollViewRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabSwitcher}
-      >
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[0] = ref; }}
-          style={[styles.tabButton, currentTab === 'maps' && styles.activeTabButton]}
-          onPress={() => handleTabChange('maps', 0)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'maps' && styles.activeTabButtonText]}>
-            Maps
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[1] = ref; }}
-          style={[styles.tabButton, currentTab === 'photos' && styles.activeTabButton]}
-          onPress={() => handleTabChange('photos', 1)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'photos' && styles.activeTabButtonText]}>
-            Photos
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[2] = ref; }}
-          style={[styles.tabButton, currentTab === 'clientInfo' && styles.activeTabButton]}
-          onPress={() => handleTabChange('clientInfo', 2)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'clientInfo' && styles.activeTabButtonText]}>
-            Client Info
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[3] = ref; }}
-          style={[styles.tabButton, currentTab === 'deskStudy' && styles.activeTabButton]}
-          onPress={() => handleTabChange('deskStudy', 3)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'deskStudy' && styles.activeTabButtonText]}>
-            Desk Study
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[4] = ref; }}
-          style={[styles.tabButton, currentTab === 'visualAssessment' && styles.activeTabButton]}
-          onPress={() => handleTabChange('visualAssessment', 4)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'visualAssessment' && styles.activeTabButtonText]}>
-            Visual Assessment
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[5] = ref; }}
-          style={[styles.tabButton, currentTab === 'trialHole' && styles.activeTabButton]}
-          onPress={() => handleTabChange('trialHole', 5)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'trialHole' && styles.activeTabButtonText]}>
-            Trial Hole
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[6] = ref; }}
-          style={[styles.tabButton, currentTab === 'subsurfacePerc' && styles.activeTabButton]}
-          onPress={() => handleTabChange('subsurfacePerc', 6)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'subsurfacePerc' && styles.activeTabButtonText]}>
-            Subsurface Perc
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[7] = ref; }}
-          style={[styles.tabButton, currentTab === 'surfacePerc' && styles.activeTabButton]}
-          onPress={() => handleTabChange('surfacePerc', 7)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'surfacePerc' && styles.activeTabButtonText]}>
-            Surface Perc
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[8] = ref; }}
-          style={[styles.tabButton, currentTab === 'conclusion' && styles.activeTabButton]}
-          onPress={() => handleTabChange('conclusion', 8)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'conclusion' && styles.activeTabButtonText]}>
-            Conclusion
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[9] = ref; }}
-          style={[styles.tabButton, currentTab === 'selectedDwwts' && styles.activeTabButton]}
-          onPress={() => handleTabChange('selectedDwwts', 9)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'selectedDwwts' && styles.activeTabButtonText]}>
-            Selected DWWTS
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[10] = ref; }}
-          style={[styles.tabButton, currentTab === 'treatmentSystems' && styles.activeTabButton]}
-          onPress={() => handleTabChange('treatmentSystems', 10)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'treatmentSystems' && styles.activeTabButtonText]}>
-            Treatment Systems
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[11] = ref; }}
-          style={[styles.tabButton, currentTab === 'qualityAssurance' && styles.activeTabButton]}
-          onPress={() => handleTabChange('qualityAssurance', 11)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'qualityAssurance' && styles.activeTabButtonText]}>
-            Quality Assurance
-          </Text>
-        </Pressable>
-        <Pressable
-          ref={(ref) => { tabButtonRefs.current[12] = ref; }}
-          style={[styles.tabButton, currentTab === 'siteAssessor' && styles.activeTabButton]}
-          onPress={() => handleTabChange('siteAssessor', 12)}
-        >
-          <Text style={[styles.tabButtonText, currentTab === 'siteAssessor' && styles.activeTabButtonText]}>
-            Site Assessor
-          </Text>
-        </Pressable>
-      </ScrollView>
-    </View>
-
-    {/* Show Maps Tab */}
-    {currentTab === 'maps' && (
-      <MapsTab
-        lat={lat}
-        setLat={setLat}
-        lon={lon}
-        setLon={setLon}
-
-        loading={loading}
-        imgErr={imgErr}
-        imgUris={imgUris}
-        mapDescriptions={mapDescriptions}
-        generateMaps={generateMaps}
-        getCurrentLocation={getCurrentLocation}
-      />
+        <AppHeader
+          title="My Reports"
+          onMenu={() => setShowSidebar(true)}
+          rightNode={
+            <Pressable
+              hitSlop={10}
+              onPress={() => { handleNewReport(); setMainView('currentReport'); }}
+              style={styles.headerPlus}
+            >
+              <IcoPlus size={20} color="#fff" />
+            </Pressable>
+          }
+        />
+        <View style={{ flex: 1 }}>
+          <MyReportsTab
+            onLoadReport={(report) => { loadReport(report); setMainView('currentReport'); }}
+            onNewReport={() => { handleNewReport(); setMainView('currentReport'); }}
+            currentReportId={currentReportId}
+          />
+        </View>
+      </>
     )}
 
-    {/* Show Photos Tab */}
-    {currentTab === 'photos' && (
-      <PhotosTab
-        photoUrls={photoUrls}
-        setPhotoUrls={setPhotoUrls}
-      />
+    {/* Settings view */}
+    {mainView === 'settings' && (
+      <>
+        <AppHeader title="Settings" onBack={() => setMainView('myReports')} />
+        <View style={{ flex: 1 }}>
+          <SettingsTab
+            onClose={() => setMainView('myReports')}
+            onSave={(defaults) => setAssessorDefaults(defaults)}
+          />
+        </View>
+      </>
     )}
+
+    {/* Current Report — Overview hub */}
+    {mainView === 'currentReport' && currentReportId && currentSection === null && (
+      <>
+        <AppHeader
+          title={(firstName || surname) ? `${firstName} ${surname}`.trim() : 'Current Report'}
+          onBack={() => setMainView('myReports')}
+        />
+        <ReportOverview
+          siteName={(firstName || surname) ? `${firstName} ${surname}`.trim() : (siteLocation || 'Untitled Report')}
+          location={siteLocation}
+          clientName={`${prefix} ${firstName} ${surname}`.replace(/\s+/g, ' ').trim()}
+          fileRef={fileRef}
+          status={currentReportStatus}
+          sectionsComplete={sectionsComplete}
+          onOpenSection={openSection}
+          onGenerate={handleGenerate}
+          generating={generating}
+        />
+      </>
+    )}
+
+    {/* Current Report — Section form */}
+    {mainView === 'currentReport' && currentReportId && currentSection !== null && (
+      <>
+        <AppHeader
+          title={SectionMeta[currentSection]?.label || 'Section'}
+          onBack={() => setCurrentSection(null)}
+          rightLabel="Save"
+          onRightPress={() => setCurrentSection(null)}
+        />
+
+        <View style={{ flex: 1 }}>
+        {/* Location, Maps & Photos (combined) */}
+        {currentSection === 'photos' && (
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+            <MapsTab
+              embedded
+              lat={lat}
+              setLat={setLat}
+              lon={lon}
+              setLon={setLon}
+              loading={loading}
+              imgErr={imgErr}
+              imgUris={imgUris}
+              mapDescriptions={mapDescriptions}
+              generateMaps={generateMaps}
+              getCurrentLocation={getCurrentLocation}
+            />
+            <PhotosTab
+              embedded
+              photoUrls={photoUrls}
+              setPhotoUrls={setPhotoUrls}
+            />
+          </ScrollView>
+        )}
 
     {/* Show Client Info Tab */}
     {currentTab === 'clientInfo' && (
@@ -3296,6 +3293,7 @@ return (
         setAssIndemnity={setAssIndemnity}
         signatureUrl={signatureUrl}
         pickAndUploadSignature={pickAndUploadSignature}
+        generateSignature={generateSignature}
         API_BASE={API_BASE}
         planPdfUrls={planPdfUrls}
         pickAndUploadPlans={pickAndUploadPlans}
@@ -3303,34 +3301,21 @@ return (
         generateReport={generateReport}
       />
     )}
-
+        </View>
       </>
     )}
 
-    {/* My Reports View */}
-    {mainView === 'myReports' && (
-      <MyReportsTab
-        onLoadReport={(id) => {
-          loadReport(id);
-          setMainView('currentReport');
-        }}
-        onNewReport={() => {
-          handleNewReport();
-          setMainView('currentReport');
-        }}
-        currentReportId={currentReportId}
-      />
-    )}
-
-    {/* Settings View */}
-    {mainView === 'settings' && (
-      <SettingsTab
-        onClose={() => setMainView('myReports')}
-        onSave={(defaults) => {
-          setAssessorDefaults(defaults);
-        }}
-      />
-    )}
+    {/* Bottom tab bar */}
+    <BottomTabBar
+      active={mainView}
+      hasCurrentReport={!!currentReportId}
+      onChange={(v) => {
+        if (v === 'currentReport') {
+          setCurrentSection(null);
+        }
+        setMainView(v);
+      }}
+    />
 
     {/* Sidebar Navigation */}
     <Sidebar
@@ -3339,6 +3324,7 @@ return (
       onNavigate={(screen) => {
         setMainView(screen);
         if (screen === 'currentReport') {
+          setCurrentSection(null);
           setCurrentTab('maps');
         }
       }}
@@ -3350,7 +3336,11 @@ return (
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: Brand.bg },
+  headerPlus: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: Brand.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

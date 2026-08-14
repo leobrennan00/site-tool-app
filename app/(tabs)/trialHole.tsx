@@ -1,5 +1,6 @@
 import React from "react";
 import { ScrollView, View, Text, TextInput, StyleSheet, Platform } from "react-native";
+import { Brand, Font, Shadow } from "@/constants/theme";
 
 // Constants for soil horizons grid - matching the actual report format
 // The text box has 50 lines, with depth markers from 0.1m to 3.5m (35 markers)
@@ -101,7 +102,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
   const handleFlowpathsChange = (text: string) => setThFlowpathsCol(limitTo50Lines(text));
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
       <View style={styles.header}>
         <Text style={styles.title}>Trial Hole Assessment</Text>
         <Text style={styles.subtitle}>
@@ -359,70 +360,77 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 18,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#1A1A1A",
-    marginBottom: 8,
+    fontSize: 20,
+    fontFamily: Font.bold,
+    color: Brand.text,
+    marginBottom: 6,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 14,
-    color: "#666",
+    color: Brand.textSub,
     lineHeight: 20,
+    fontFamily: Font.regular,
   },
   card: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
+    backgroundColor: Brand.surface,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: Brand.borderLight,
+    ...Shadow.card,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1A1A1A",
-    marginBottom: 16,
+    fontSize: 11,
+    fontFamily: Font.bold,
+    color: Brand.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 14,
   },
   row: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
+    fontSize: 12,
+    fontFamily: Font.bold,
+    color: Brand.textSub,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
     marginBottom: 6,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#DDD",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: "#FFF",
+    borderWidth: 1.5,
+    borderColor: Brand.border,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    fontFamily: Font.regular,
+    color: Brand.text,
+    backgroundColor: Brand.bg,
   },
   textArea: {
-    height: 120,
+    minHeight: 110,
     textAlignVertical: "top",
   },
   dateRow: {
     flexDirection: "row",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   dateCol: {
     flex: 1,
   },
   note: {
-    fontSize: 13,
-    color: "#666",
-    fontStyle: "italic",
+    fontSize: 12,
+    color: Brand.textMuted,
     marginBottom: 12,
+    fontFamily: Font.regular,
   },
   thGrid: {
     flexDirection: "row",
