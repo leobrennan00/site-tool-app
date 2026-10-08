@@ -1,21 +1,35 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, View, Text, Image, StyleSheet, Alert, ActivityIndicator, Pressable } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { uploadPhoto } from "../../lib/storage";
+import { capturePhotoOffline, deletePhotoLocal, getLocalPhotosForReport, LocalPhoto } from "../../lib/offlinePhotos";
+import { subscribeQueueChanged } from "../../lib/syncQueue";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle } from "@/components/ui/kit";
 
 interface PhotosProps {
-  photoUrls: string[];
-  setPhotoUrls: (urls: string[]) => void;
+  reportId: string | null;
   embedded?: boolean;
 }
 
 export default function PhotosTab(props: PhotosProps) {
-  const { photoUrls, setPhotoUrls, embedded } = props;
-  const [uploading, setUploading] = useState(false);
+  const { reportId, embedded } = props;
+  const [photos, setPhotos] = useState<LocalPhoto[]>([]);
+  const [capturing, setCapturing] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!reportId) { setPhotos([]); return; }
+    setPhotos(await getLocalPhotosForReport(reportId));
+  }, [reportId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Photos finish uploading in the background (lib/syncProcessor.ts) — this
+  // keeps the "uploaded" badge below in sync with that without the engineer
+  // having to leave and re-enter the screen.
+  useEffect(() => subscribeQueueChanged(refresh), [refresh]);
 
   const pickPhotos = async () => {
+    if (!reportId) return;
     const permResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permResult.granted) {
       Alert.alert("Permission Required", "Camera roll permission is needed to add photos");
@@ -29,61 +43,63 @@ export default function PhotosTab(props: PhotosProps) {
     });
 
     if (result.canceled) return;
-    setUploading(true);
-
-    const newUrls: string[] = [];
-    for (const asset of result.assets) {
-      try {
-        const { url, error } = await uploadPhoto(asset.uri);
-        if (error) {
-          console.error("Photo upload error:", error);
-          Alert.alert("Upload Error", `Failed to upload photo: ${error.message}`);
-        } else if (url) {
-          newUrls.push(url);
-        }
-      } catch (err) {
-        console.error("Photo upload error:", err);
-        Alert.alert("Upload Error", "Failed to upload one or more photos");
+    setCapturing(true);
+    try {
+      // Saved to the device immediately, one at a time — each is safe on
+      // disk (with its GPS + timestamp) before we move to the next, and the
+      // actual upload to Supabase happens later in the background whether
+      // we're online right now or not.
+      for (const asset of result.assets) {
+        await capturePhotoOffline(reportId, asset.uri);
       }
+      await refresh();
+    } catch (err) {
+      console.error("Photo capture error:", err);
+      Alert.alert("Error", "Failed to save one or more photos to the device.");
+    } finally {
+      setCapturing(false);
     }
-
-    setPhotoUrls([...photoUrls, ...newUrls]);
-    setUploading(false);
   };
 
-  const removePhoto = (index: number) => {
-    const updated = [...photoUrls];
-    updated.splice(index, 1);
-    setPhotoUrls(updated);
+  const removePhoto = async (photoId: string) => {
+    await deletePhotoLocal(photoId);
+    await refresh();
   };
 
   const body = (
     <Card>
       <CardTitle>Site Photos</CardTitle>
-      <Text style={styles.hint}>Photos are included in the final PDF report after the maps.</Text>
+      <Text style={styles.hint}>Photos are saved to this device immediately and uploaded automatically, included in the final PDF report after the maps.</Text>
 
-      {uploading && (
+      {capturing && (
         <View style={styles.uploadingContainer}>
           <ActivityIndicator size="large" color={Brand.primary} />
-          <Text style={styles.uploadingText}>Uploading photos…</Text>
+          <Text style={styles.uploadingText}>Saving photos…</Text>
         </View>
       )}
 
-      <Pressable onPress={pickPhotos} disabled={uploading} style={styles.addBtn}>
+      <Pressable onPress={pickPhotos} disabled={capturing || !reportId} style={styles.addBtn}>
         <Text style={styles.addBtnText}>
-          {uploading ? "Uploading…" : photoUrls.length ? `+ Add More Photos (${photoUrls.length})` : "+ Add Site Photos"}
+          {capturing ? "Saving…" : photos.length ? `+ Add More Photos (${photos.length})` : "+ Add Site Photos"}
         </Text>
       </Pressable>
 
-      {photoUrls.length > 0 && (
+      {photos.length > 0 && (
         <View style={{ marginTop: 16 }}>
-          <Text style={styles.successText}>✓ {photoUrls.length} photo(s) ready to include</Text>
-          {photoUrls.map((url, idx) => (
-            <View key={idx} style={styles.photoContainer}>
-              <Image source={{ uri: url }} style={styles.photoImage} resizeMode="cover" />
-              <Pressable onPress={() => removePhoto(idx)} style={styles.removeBtn}>
-                <Text style={styles.removeBtnText}>Remove</Text>
-              </Pressable>
+          <Text style={styles.successText}>✓ {photos.length} photo(s) saved to this device</Text>
+          {photos.map((photo) => (
+            <View key={photo.id} style={styles.photoContainer}>
+              <Image source={{ uri: photo.local_uri }} style={styles.photoImage} resizeMode="cover" />
+              <View style={styles.photoRow}>
+                <View style={[styles.badge, photo.uploaded ? styles.badgeSynced : styles.badgePending]}>
+                  <Text style={[styles.badgeText, photo.uploaded ? styles.badgeTextSynced : styles.badgeTextPending]}>
+                    {photo.uploaded ? "Uploaded" : "Waiting to upload"}
+                  </Text>
+                </View>
+                <Pressable onPress={() => removePhoto(photo.id)} style={styles.removeBtn}>
+                  <Text style={styles.removeBtnText}>Remove</Text>
+                </Pressable>
+              </View>
             </View>
           ))}
         </View>
@@ -106,6 +122,13 @@ const styles = StyleSheet.create({
   successText: { color: Brand.primary, fontSize: 14, marginBottom: 14, fontFamily: Font.medium },
   photoContainer: { marginBottom: 14, backgroundColor: Brand.bg, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: Brand.borderLight },
   photoImage: { width: "100%", height: 200, borderRadius: 8, marginBottom: 10 },
+  photoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  badgeSynced: { backgroundColor: Brand.primaryTint },
+  badgePending: { backgroundColor: Brand.amberTint },
+  badgeText: { fontSize: 12, fontFamily: Font.semibold },
+  badgeTextSynced: { color: Brand.primary },
+  badgeTextPending: { color: Brand.amber },
   removeBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: Brand.dangerTint },
   removeBtnText: { color: Brand.danger, fontFamily: Font.semibold, fontSize: 13 },
   uploadingContainer: { alignItems: "center", marginBottom: 16 },

@@ -3,6 +3,9 @@ import {
   ScrollView, View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { getUserReports, deleteReport, Report } from '../../lib/reports';
+import { pullNewReportsFromServer } from '../../lib/offlineReports';
+import { processQueue } from '../../lib/syncProcessor';
+import { isOnline } from '../../lib/network';
 import { Brand, Font, Shadow } from '@/constants/theme';
 import { ProgressRing, StatusPill, GradientHero } from '@/components/ui/kit';
 import { IcoChevronRight, IcoPlus, IcoTrash } from '@/components/ui/icons';
@@ -67,6 +70,15 @@ export default function MyReportsTab(props: MyReportsProps) {
 
   async function handleRefresh() {
     setRefreshing(true);
+    // Pull-to-refresh is the one place we explicitly wait on the network:
+    // pick up anything created/changed on another device, then push any of
+    // this device's pending changes, before re-reading the (now up to date)
+    // local list. Silently skipped offline — the local list is already
+    // what's shown, same as on a normal load.
+    if (isOnline()) {
+      await pullNewReportsFromServer().catch(() => {});
+      await processQueue().catch(() => {});
+    }
     await loadReports();
     setRefreshing(false);
   }

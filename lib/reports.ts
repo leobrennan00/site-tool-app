@@ -1,4 +1,20 @@
-import { supabase } from './supabase';
+// Public report API used by the screens (index.tsx, myReports.tsx, …).
+// Every function here is now local-first: it reads/writes the on-device
+// SQLite DB immediately and queues a background Supabase sync rather than
+// blocking on the network — see lib/offlineReports.ts for the actual
+// storage + conflict-resolution logic, and lib/syncProcessor.ts for when
+// the queue actually gets flushed. Signatures are unchanged from before so
+// existing call sites (loadReport, handleNewReport, MyReportsTab, …) didn't
+// need to change.
+import { getDb } from './db';
+import {
+  createReportOffline,
+  deleteReportOffline,
+  completeReportOffline,
+  listLocalReports,
+  getLocalReport,
+  saveReportSections,
+} from './offlineReports';
 
 export interface Report {
   id: string;
@@ -23,210 +39,58 @@ export interface Report {
   updated_at: string;
 }
 
-/**
- * Ensure user profile exists
- */
-async function ensureProfile(): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) return;
-
-  // Check if profile exists
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', user.id)
-    .single();
-
-  // If profile doesn't exist, create it
-  if (!profile) {
-    await supabase
-      .from('profiles')
-      .insert([
-        {
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || 'Unknown',
-        },
-      ]);
-  }
-}
-
-/**
- * Create a new draft report
- */
+/** Create a new draft report. Works fully offline — the id is generated on
+ *  the device and reused as-is as the Supabase row id once synced, so there
+ *  is never a separate "local id" to remap and no risk of duplicates. */
 export async function createReport(siteName?: string): Promise<{ data: Report | null; error: any }> {
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { data: null, error: { message: 'Not authenticated' } };
-  }
-
-  // Ensure profile exists before creating report
-  await ensureProfile();
-
-  const { data, error } = await supabase
-    .from('reports')
-    .insert([
-      {
-        user_id: user.id,
-        site_name: siteName || 'Untitled Report',
-        status: 'draft',
-      },
-    ])
-    .select()
-    .single();
-
-  return { data, error };
+  return createReportOffline(siteName);
 }
 
-/**
- * Get all reports for the current user
- */
+/** All reports for the current user, read from the local DB — available
+ *  with no connection. Call lib/syncProcessor.ts's syncNow() separately
+ *  (e.g. on pull-to-refresh) to pull in reports created on other devices. */
 export async function getUserReports(): Promise<{ data: Report[] | null; error: any }> {
-  const { data, error } = await supabase
-    .from('reports')
-    .select('*')
-    .order('updated_at', { ascending: false });
-
-  return { data, error };
+  try {
+    const data = await listLocalReports();
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
 }
 
-/**
- * Get a single report by ID
- */
 export async function getReport(reportId: string): Promise<{ data: Report | null; error: any }> {
-  const { data, error } = await supabase
-    .from('reports')
-    .select('*')
-    .eq('id', reportId)
-    .single();
-
-  return { data, error };
+  try {
+    const data = await getLocalReport(reportId);
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
 }
 
-/**
- * Delete a report and all its associated files
- */
+/** Deletes locally immediately (hidden from the list right away) and queues
+ *  the remote delete (including storage cleanup) for when back online. */
 export async function deleteReport(reportId: string): Promise<{ error: any }> {
-  try {
-    // First, get the report to find all associated files
-    const { data: report, error: fetchError } = await supabase
-      .from('reports')
-      .select('*')
-      .eq('id', reportId)
-      .single();
-
-    if (fetchError) {
-      return { error: fetchError };
-    }
-
-    if (!report) {
-      return { error: { message: 'Report not found' } };
-    }
-
-    // Collect all file paths to delete
-    const filesToDelete: string[] = [];
-
-    // Add photo URLs
-    if (report.photo_urls && Array.isArray(report.photo_urls)) {
-      report.photo_urls.forEach((url: string) => {
-        const path = extractStoragePath(url);
-        if (path) filesToDelete.push(path);
-      });
-    }
-
-    // Add map URLs
-    if (report.map_urls && Array.isArray(report.map_urls)) {
-      report.map_urls.forEach((url: string) => {
-        const path = extractStoragePath(url);
-        if (path) filesToDelete.push(path);
-      });
-    }
-
-    // Add signature URL from site_assessor data
-    if (report.site_assessor?.signatureUrl) {
-      const path = extractStoragePath(report.site_assessor.signatureUrl);
-      if (path) filesToDelete.push(path);
-    }
-
-    // Add plan PDF URLs from site_assessor data
-    if (report.site_assessor?.planPdfUrls && Array.isArray(report.site_assessor.planPdfUrls)) {
-      report.site_assessor.planPdfUrls.forEach((url: string) => {
-        const path = extractStoragePath(url);
-        if (path) filesToDelete.push(path);
-      });
-    }
-
-    // Add generated PDF URL
-    if (report.pdf_url) {
-      const path = extractStoragePath(report.pdf_url);
-      if (path) filesToDelete.push(path);
-    }
-
-    // Delete all files from storage
-    if (filesToDelete.length > 0) {
-      const { error: storageError } = await supabase.storage
-        .from('report-assets')
-        .remove(filesToDelete);
-
-      if (storageError) {
-        console.warn('Some files could not be deleted from storage:', storageError);
-        // Continue with report deletion even if file deletion fails
-      }
-    }
-
-    // Finally, delete the report from the database
-    const { error: deleteError } = await supabase
-      .from('reports')
-      .delete()
-      .eq('id', reportId);
-
-    return { error: deleteError };
-  } catch (err) {
-    console.error('Error deleting report:', err);
-    return { error: err };
-  }
+  return deleteReportOffline(reportId);
 }
 
-/**
- * Extract storage path from a Supabase Storage URL
- * Example: https://abc.supabase.co/storage/v1/object/public/report-assets/photos/file.jpg
- * Returns: photos/file.jpg
- */
-function extractStoragePath(url: string): string | null {
-  if (!url) return null;
-
-  try {
-    // Match the path after /report-assets/
-    const match = url.match(/\/report-assets\/(.+)$/);
-    return match ? match[1] : null;
-  } catch (err) {
-    console.warn('Failed to extract storage path from URL:', url);
-    return null;
-  }
-}
-
-/**
- * Mark report as completed
- */
 export async function completeReport(reportId: string): Promise<{ error: any }> {
-  const { error } = await supabase
-    .from('reports')
-    .update({ status: 'completed' })
-    .eq('id', reportId);
-
-  return { error };
+  return completeReportOffline(reportId);
 }
 
-/**
- * Update site name
- */
 export async function updateSiteName(reportId: string, siteName: string): Promise<{ error: any }> {
-  const { error } = await supabase
-    .from('reports')
-    .update({ site_name: siteName })
-    .eq('id', reportId);
-
-  return { error };
+  const db = await getDb();
+  await db.runAsync(`UPDATE reports SET site_name = ?, dirty = 1, updated_at = ? WHERE id = ?`, [
+    siteName,
+    new Date().toISOString(),
+    reportId,
+  ]);
+  const { enqueue } = await import('./syncQueue');
+  await enqueue('report_upsert', {}, reportId);
+  return { error: null };
 }
+
+// Re-exported for screens that want to save specific sections directly
+// without going through useAutoSave (none currently do, but this keeps the
+// section-save logic discoverable from the same module screens already
+// import from).
+export { saveReportSections };

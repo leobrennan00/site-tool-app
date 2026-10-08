@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { SafeAreaView, ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable, Dimensions } from "react-native";
+import { SafeAreaView, ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable, Dimensions, ActivityIndicator } from "react-native";
 import { Alert } from "react-native";
 import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -10,6 +10,12 @@ import { Session } from "@supabase/supabase-js";
 import Auth from "./auth";
 import { createReport, Report } from "../../lib/reports";
 import { useAutoSave } from "../../hooks/useAutoSave";
+import { isOnline, subscribeOnline } from "../../lib/network";
+import { enqueue, subscribeQueueChanged } from "../../lib/syncQueue";
+import { getUploadedPhotoUrls } from "../../lib/offlinePhotos";
+import { SyncStatusBar } from "@/components/ui/SyncStatusBar";
+import { startSyncEngine } from "../../lib/syncProcessor";
+import { markDeskStudyPending, markDeskStudyReady, getDeskStudyStatus, DeskStudyStatus } from "../../lib/deskStudyCache";
 import MapsTab from "./maps";
 import PhotosTab from "./photos";
 import ClientInfoTab from "./clientInfo";
@@ -53,8 +59,14 @@ const API_BASE = __DEV__
 export default function Index() {
   type FlowPath = "Roots" | "Cracks" | "Wormholes" | "None";
 
-  // Authentication state
+  // Authentication state. `sessionChecked` guards the very first render: a
+  // freshly-launched app has `session === null` for one tick before the
+  // persisted session (now in SecureStore, see lib/supabase.ts) has been
+  // read back, and without this guard that tick would flash the Auth screen
+  // on every cold start — including offline ones. We only decide "truly
+  // signed out" once the initial check has actually completed.
   const [session, setSession] = useState<Session | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   // Current report being worked on
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
@@ -78,8 +90,15 @@ export default function Index() {
 
   // Check for authentication session
   useEffect(() => {
+    // Starts the background sync engine (queue processing on
+    // reconnect/foreground/interval — see lib/syncProcessor.ts). Safe to
+    // call once per app launch regardless of auth state; it's a no-op until
+    // there's a session and something queued.
+    startSyncEngine();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setSessionChecked(true);
       if (session) {
         loadAssessorDefaults();
       }
@@ -89,6 +108,7 @@ export default function Index() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setSessionChecked(true);
       if (session) {
         loadAssessorDefaults();
       }
@@ -101,11 +121,47 @@ export default function Index() {
 
   const [imgUris, setImgUris] = useState<string[]>([]);
   const [mapDescriptions, setMapDescriptions] = useState<Record<string, string>>({});
+  // 'none' = never attempted · 'pending' = waiting on signal to fetch ·
+  // 'ready' = desk study + maps already fetched for this report.
+  const [deskStudyStatus, setDeskStudyStatus] = useState<DeskStudyStatus>('none');
+  // Uploaded (remote) photo URLs for the *current* report — PhotosTab now
+  // owns photo capture/display itself from the local DB (see
+  // app/(tabs)/photos.tsx); this state only exists so useAutoSave and the
+  // report-generation payload below have the list of URLs the backend can
+  // actually download. It's refreshed whenever the open report changes or
+  // a photo finishes uploading in the background.
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const refreshPhotoUrls = () => {
+      if (!currentReportId) { setPhotoUrls([]); return; }
+      getUploadedPhotoUrls(currentReportId).then((urls) => {
+        if (!cancelled) setPhotoUrls(urls);
+      });
+    };
+    refreshPhotoUrls();
+    const unsubscribe = subscribeQueueChanged(refreshPhotoUrls);
+    return () => { cancelled = true; unsubscribe(); };
+  }, [currentReportId]);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [planPdfUrls, setPlanPdfUrls] = useState<string[]>([]);
   const [lat, setLat] = useState("");
   const [lon, setLon] = useState("");
+
+  // If the desk study was left "pending" (generateMaps() was attempted
+  // offline), fetch it automatically the moment we're back in signal —
+  // covers the currently-open report; if the engineer has since switched to
+  // a different report, its own pending desk study will fetch next time
+  // it's opened online instead.
+  useEffect(() => {
+    return subscribeOnline((online) => {
+      if (online && deskStudyStatus === 'pending' && lat && lon) {
+        generateMaps();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deskStudyStatus, lat, lon]);
+
   const [loading, setLoading] = useState(false);
   const [imgErr, setImgErr] = useState<string | null>(null);
   const [siteLocation, setSiteLocation] = useState("");
@@ -122,6 +178,17 @@ export default function Index() {
   const [peComments, setPeComments] = useState("");
   // Add near your other state declarations in index.tsx
   const [populationEquivalent, setPopulationEquivalent] = useState("");
+  // Auto-fills P.E. as bedrooms + 1 (standard convention) the moment
+  // bedrooms is entered, but only while P.E. is still blank — once the
+  // engineer has a value there (typed or loaded from a saved report) this
+  // leaves it alone, so it's always still freely editable.
+  useEffect(() => {
+    const n = Number(bedrooms);
+    if (!populationEquivalent.trim() && bedrooms.trim() && Number.isFinite(n) && n > 0) {
+      setPopulationEquivalent(String(n + 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bedrooms]);
   const [soilType, setSoilType] = useState("");
   const [subsoilType, setSubsoilType] = useState("");
   const [bedrockType, setBedrockType] = useState("");
@@ -1429,6 +1496,13 @@ const TANK_TYPES = [
       Alert.alert("Name required", "Enter your first and last name before generating a signature.");
       return;
     }
+    if (!isOnline()) {
+      Alert.alert(
+        "Signature needs signal",
+        "Everything else on this form saves offline, but generating the signature image needs a connection — add it once you're back in signal, or just tap Generate Report and it'll queue until then."
+      );
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/generate_signature?name=${encodeURIComponent(name)}`);
       if (!res.ok) {
@@ -1448,6 +1522,13 @@ const TANK_TYPES = [
   }
 
   async function pickAndUploadSignature() {
+    if (!isOnline()) {
+      Alert.alert(
+        "Signature needs signal",
+        "Everything else on this form saves offline, but uploading a signature image needs a connection — add it once you're back in signal, or just tap Generate Report and it'll queue until then."
+      );
+      return;
+    }
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
@@ -1632,10 +1713,7 @@ const TANK_TYPES = [
       }
 
 
-      const res = await fetch(`${API_BASE}/generate_report_from_app`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const reportPayload = {
           // PAGE 1
           lat: Number((lat || "").toString().trim()),
           lon: Number((lon || "").toString().trim()),
@@ -2071,23 +2149,21 @@ const TANK_TYPES = [
           maps: (imgUris || []).slice(0, 10),
           photos: photoUrls,
           plans: planPdfUrls,
+      };
 
+      if (!isOnline()) {
+        await enqueue('report_generate', { ...reportPayload, __reportId: currentReportId }, currentReportId);
+        Alert.alert(
+          "Report queued",
+          "You're offline, so this report will be generated and emailed automatically as soon as you're back in signal. You don't need to do anything else."
+        );
+        return;
+      }
 
-
-
-
-
-
-
-
-
-          
-
-
-          
-
-        }),
-
+      const res = await fetch(`${API_BASE}/generate_report_from_app`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reportPayload),
       });
 
       const json = await res.json();
@@ -2296,6 +2372,8 @@ const TANK_TYPES = [
       setPhotoUrls(report.photo_urls || []);
       setImgUris(report.map_urls || []);
 
+      getDeskStudyStatus(report.id).then(({ status }) => setDeskStudyStatus(status));
+
       // Set the current report ID
       setCurrentReportId(report.id);
       setCurrentReportStatus(report.status || 'draft');
@@ -2417,6 +2495,7 @@ const TANK_TYPES = [
         setLikelySurfaceP('');
         setPhotoUrls([]);
         setImgUris([]);
+        setDeskStudyStatus('none');
 
         // Reset Trial Hole data
         setTrialDepth('');
@@ -2556,6 +2635,25 @@ const TANK_TYPES = [
 
   // Generate maps function
   async function generateMaps() {
+    // This is the "Prepare for site" step: desk study (GSI/EPA) lookups +
+    // map generation need a connection. If we don't have one, don't throw a
+    // raw network-error banner — mark it pending so it auto-fetches as soon
+    // as signal returns (see the reconnect effect below) and let the
+    // engineer carry on with everything else offline in the meantime.
+    if (!isOnline()) {
+      setImgErr(null);
+      if (currentReportId && lat && lon) {
+        await markDeskStudyPending(currentReportId, lat, lon);
+        setDeskStudyStatus('pending');
+      } else {
+        Alert.alert(
+          "You're offline",
+          "Enter the site coordinates now and the desk study will be fetched automatically once you're back in signal."
+        );
+      }
+      return;
+    }
+
     setImgErr(null);
     setLoading(true);
     try {
@@ -2615,6 +2713,11 @@ const TANK_TYPES = [
 
       // 2) Prefill desk-study fields from live GSI summaries
       await prefillFromLayerSummaries(lat, lon);
+
+      if (currentReportId) {
+        await markDeskStudyReady(currentReportId, lat, lon);
+        setDeskStudyStatus('ready');
+      }
     } catch (e: any) {
       setImgErr(String(e?.message ?? e));
       setImgUris([]);
@@ -2858,13 +2961,27 @@ const TANK_TYPES = [
     !!session // Only auto-save when user is logged in
   );
 
-  // Show auth screen if not logged in
+  // Wait for the initial (local, offline-safe) session check before deciding
+  // whether to show the app or the login screen — see `sessionChecked` above.
+  if (!sessionChecked) {
+    return (
+      <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={Brand.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  // Show auth screen only once we're sure there's no usable session —
+  // never because of a network blip (see lib/supabase.ts / sessionChecked).
   if (!session) {
     return <Auth />;
   }
 
 return (
   <SafeAreaView style={styles.container}>
+    <View style={styles.syncStatusOverlay} pointerEvents="box-none">
+      <SyncStatusBar />
+    </View>
     {/* My Reports view */}
     {mainView === 'myReports' && (
       <>
@@ -2951,11 +3068,11 @@ return (
               mapDescriptions={mapDescriptions}
               generateMaps={generateMaps}
               getCurrentLocation={getCurrentLocation}
+              deskStudyStatus={deskStudyStatus}
             />
             <PhotosTab
               embedded
-              photoUrls={photoUrls}
-              setPhotoUrls={setPhotoUrls}
+              reportId={currentReportId}
             />
           </ScrollView>
         )}
@@ -3337,6 +3454,9 @@ return (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Brand.bg },
+  syncStatusOverlay: {
+    position: 'absolute', top: 8, right: 12, zIndex: 50, alignItems: 'flex-end',
+  },
   headerPlus: {
     width: 34, height: 34, borderRadius: 17, backgroundColor: Brand.primary,
     alignItems: 'center', justifyContent: 'center',

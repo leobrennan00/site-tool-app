@@ -1,6 +1,7 @@
 import React from "react";
 import { ScrollView, View, Text, TextInput, StyleSheet } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
+import { Stopwatch } from "@/components/ui/Stopwatch";
 
 // Types
 type PercTestHole = {
@@ -300,6 +301,12 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
                   />
                 </View>
               </View>
+              <Stopwatch
+                startValue={fill.start}
+                finishValue={fill.finish}
+                onStart={(hhmm) => setStdField(hi, fi, "start", hhmm)}
+                onStop={(hhmm) => setStdField(hi, fi, "finish", hhmm)}
+              />
               {typeof fill.deltaMin === "number" && (
                 <Text style={styles.calcText}>Δt: {fill.deltaMin.toFixed(2)} min</Text>
               )}
@@ -372,6 +379,12 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
                   />
                 </View>
               </View>
+              <Stopwatch
+                startValue={band.start}
+                finishValue={band.finish}
+                onStart={(hhmm) => setModField(hi, bi, "start", hhmm)}
+                onStop={(hhmm) => setModField(hi, bi, "finish", hhmm)}
+              />
 
               <View style={styles.calcBox}>
                 <Text style={styles.calcText}>

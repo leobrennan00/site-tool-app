@@ -17,12 +17,13 @@ interface MapsProps {
   generateMaps: () => void;
   getCurrentLocation: () => void;
   embedded?: boolean;
+  deskStudyStatus?: 'none' | 'pending' | 'ready';
 }
 
 export default function MapsTab(props: MapsProps) {
   const {
     lat, setLat, lon, setLon, loading, imgErr, imgUris,
-    mapDescriptions, generateMaps, getCurrentLocation, embedded,
+    mapDescriptions, generateMaps, getCurrentLocation, embedded, deskStudyStatus,
   } = props;
 
   const [eircode, setEircode] = useState("");
@@ -176,6 +177,14 @@ export default function MapsTab(props: MapsProps) {
         style={{ marginBottom: showProgress ? 8 : 14 }}
       />
 
+      {deskStudyStatus === 'pending' ? (
+        <View style={styles.pendingBanner}>
+          <Text style={styles.pendingBannerText}>
+            Desk study pending — will fetch automatically once you&rsquo;re back in signal.
+          </Text>
+        </View>
+      ) : null}
+
       {showProgress ? (
         <ProgressBar
           active={loading}
@@ -248,6 +257,8 @@ const styles = StyleSheet.create({
   coordRow: { flexDirection: 'row', gap: 12 },
   errorCard: { backgroundColor: Brand.dangerTint, borderRadius: 12, padding: 16, marginBottom: 14 },
   errorText: { color: Brand.danger, fontSize: 14, fontFamily: Font.regular },
+  pendingBanner: { backgroundColor: Brand.amberTint, borderRadius: 12, padding: 14, marginBottom: 14 },
+  pendingBannerText: { color: Brand.amber, fontSize: 13, fontFamily: Font.medium, lineHeight: 18 },
   successText: { color: Brand.primary, fontSize: 14, marginBottom: 16, fontFamily: Font.medium },
   mapContainer: { marginBottom: 20 },
   mapTitle: { fontSize: 15, fontFamily: Font.semibold, color: Brand.text, marginBottom: 8 },

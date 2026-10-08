@@ -1,4 +1,5 @@
 import React from "react";
+import { Stopwatch } from "@/components/ui/Stopwatch";
 import { ScrollView, View, Text, TextInput, StyleSheet } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
 
@@ -276,6 +277,12 @@ export default function SurfacePercTab(props: SurfacePercProps) {
                   />
                 </View>
               </View>
+              <Stopwatch
+                startValue={fill.start}
+                finishValue={fill.finish}
+                onStart={(hhmm) => setSurfStdField(hi, fi, "start", hhmm)}
+                onStop={(hhmm) => setSurfStdField(hi, fi, "finish", hhmm)}
+              />
               {typeof fill.deltaMin === "number" && (
                 <Text style={styles.calcText}>Δt: {fill.deltaMin.toFixed(2)} min</Text>
               )}
@@ -348,6 +355,12 @@ export default function SurfacePercTab(props: SurfacePercProps) {
                   />
                 </View>
               </View>
+              <Stopwatch
+                startValue={band.start}
+                finishValue={band.finish}
+                onStart={(hhmm) => setSurfModField(hi, bi, "start", hhmm)}
+                onStop={(hhmm) => setSurfModField(hi, bi, "finish", hhmm)}
+              />
 
               <View style={styles.calcBox}>
                 <Text style={styles.calcText}>
