@@ -2,6 +2,7 @@ import React from "react";
 import { ScrollView, View, Platform } from "react-native";
 import { Brand } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup } from "@/components/ui/kit";
+import { DWWTS_INSTALL_OPTIONS } from "@/lib/designRules/epaCop2021";
 
 interface SelectedDwwtsProps {
   dwwtsInstall: string;
@@ -12,18 +13,23 @@ interface SelectedDwwtsProps {
   setInvertLevel: (val: string) => void;
   siteSpecificConditions: string;
   setSiteSpecificConditions: (val: string) => void;
+  /** Short explanation of where the Site Specific Conditions paragraph
+   *  suggestion came from (or why there isn't one yet) — see
+   *  lib/designRules/dwwtsSizing.ts. */
+  siteSpecificConditionsHint?: string;
 }
 
 export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
   const {
     dwwtsInstall, setDwwtsInstall, dwwtsDischargeTo, setDwwtsDischargeTo,
     invertLevel, setInvertLevel, siteSpecificConditions, setSiteSpecificConditions,
+    siteSpecificConditionsHint,
   } = props;
 
   const installOptions = [
-    "Septic tank system (septic tank and percolation area)",
-    "Secondary Treatment System and soil polishing filter",
-    "Tertiary Treatment System and Infiltration /treatment area",
+    DWWTS_INSTALL_OPTIONS.septicTank,
+    DWWTS_INSTALL_OPTIONS.secondaryAndPolishingFilter,
+    DWWTS_INSTALL_OPTIONS.tertiary,
   ];
 
   return (
@@ -44,7 +50,10 @@ export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
           onChange={(v) => setDwwtsDischargeTo(v)}
           options={[
             { label: "Ground Water", value: "Ground Water" },
-            { label: "Surface Water", value: "Surface Water" },
+            // A single house is never permitted to discharge to surface
+            // water — greyed out rather than removed, so it's still clear
+            // what the other option is.
+            { label: "Surface Water (not used for a single house)", value: "Surface Water", disabled: true },
           ]}
         />
       </Card>
@@ -65,6 +74,7 @@ export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
             onChangeText={setSiteSpecificConditions}
             multiline
             placeholder="Special works, site improvement works, testing, etc."
+            hint={siteSpecificConditionsHint}
           />
         </View>
       </Card>

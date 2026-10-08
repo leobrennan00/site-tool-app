@@ -37,10 +37,13 @@ export function useAutoSave(
   // timestamp) sections that actually changed, not the whole record.
   const previousSectionsRef = useRef<Partial<Record<SectionColumn, string>>>({});
   const previousReportIdRef = useRef<string | null>(null);
-  // Holds whatever save is currently debounced, so the unmount-only effect
-  // below can flush it immediately instead of discarding it. Re-created on
-  // every render that has a pending change — only *read* on unmount.
-  const pendingFlushRef = useRef<(() => void) | null>(null);
+  // Holds whatever save is currently debounced, so it can be flushed
+  // immediately instead of discarding it — both on unmount (see the second
+  // effect below) and on demand via the returned flush() (see generateReport
+  // in app/(tabs)/index.tsx, which flushes before building the report so the
+  // last few keystrokes before tapping "Generate Report" are never missed).
+  // Re-created on every render that has a pending change; cleared once run.
+  const pendingFlushRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (!enabled || !reportId) return;
@@ -73,16 +76,17 @@ export function useAutoSave(
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     let flushed = false;
-    const doSave = () => {
+    const doSave = async () => {
       if (flushed) return;
       flushed = true;
-      saveReportSections(reportId, changed)
-        .then(() => {
-          for (const column of Object.keys(changed) as SectionColumn[]) {
-            previousSectionsRef.current[column] = JSON.stringify(changed[column]);
-          }
-        })
-        .catch((err) => console.error('Local auto-save failed:', err));
+      try {
+        await saveReportSections(reportId, changed);
+        for (const column of Object.keys(changed) as SectionColumn[]) {
+          previousSectionsRef.current[column] = JSON.stringify(changed[column]);
+        }
+      } catch (err) {
+        console.error('Local auto-save failed:', err);
+      }
     };
 
     // Short debounce so we're not hitting SQLite on every keystroke, while
@@ -105,4 +109,18 @@ export function useAutoSave(
       pendingFlushRef.current?.();
     };
   }, []);
+
+  // Callable on demand (e.g. right before "Generate Report" builds its
+  // payload) to force-save whatever's still sitting in the debounce window,
+  // rather than waiting up to 600ms for it to land on its own.
+  return async function flush() {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (pendingFlushRef.current) {
+      await pendingFlushRef.current();
+      pendingFlushRef.current = null;
+    }
+  };
 }

@@ -14,6 +14,16 @@ import { isOnline, subscribeOnline } from "../../lib/network";
 import { enqueue, subscribeQueueChanged } from "../../lib/syncQueue";
 import { getUploadedPhotoUrls } from "../../lib/offlinePhotos";
 import { SyncStatusBar } from "@/components/ui/SyncStatusBar";
+import {
+  peFromBedrooms,
+  resultBand,
+  loadingRateForBand,
+  polishingFilterArea,
+  polishingTrenchLength,
+  septicTrenchLength,
+  pickParagraphTemplateKey,
+  renderParagraphTemplate,
+} from "@/lib/designRules/dwwtsSizing";
 import { startSyncEngine } from "../../lib/syncProcessor";
 import { markDeskStudyPending, markDeskStudyReady, getDeskStudyStatus, DeskStudyStatus } from "../../lib/deskStudyCache";
 import MapsTab from "./maps";
@@ -178,14 +188,17 @@ export default function Index() {
   const [peComments, setPeComments] = useState("");
   // Add near your other state declarations in index.tsx
   const [populationEquivalent, setPopulationEquivalent] = useState("");
-  // Auto-fills P.E. as bedrooms + 1 (standard convention) the moment
+  // Auto-fills P.E. from the EPA CoP 2021 bedrooms table the moment
   // bedrooms is entered, but only while P.E. is still blank — once the
   // engineer has a value there (typed or loaded from a saved report) this
-  // leaves it alone, so it's always still freely editable.
+  // leaves it alone, so it's always still freely editable. See
+  // lib/designRules/dwwtsSizing.ts for the suggestion engine this is part
+  // of (DWWTS/discharge/polishing-filter suggestions further below).
   useEffect(() => {
     const n = Number(bedrooms);
     if (!populationEquivalent.trim() && bedrooms.trim() && Number.isFinite(n) && n > 0) {
-      setPopulationEquivalent(String(n + 1));
+      const suggestion = peFromBedrooms(n);
+      if (suggestion.value != null) setPopulationEquivalent(String(suggestion.value));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bedrooms]);
@@ -1346,6 +1359,103 @@ const TANK_TYPES = [
   const sPV = pickSurfacePV();
   const ssPV = pickSubsurfacePV();
 
+  // ---- DWWTS sizing suggestions (EPA CoP 2021) ----
+  // Pure, offline, derived from P.E. + the subsurface percolation result +
+  // slope + the chosen system — see lib/designRules/dwwtsSizing.ts. Each
+  // effect below only fills its field while that field is still empty
+  // (same "suggest, never overwrite" convention as the Conclusion
+  // auto-fills above), and the *Reason values are passed down to the
+  // screens to show under each suggested field.
+  const peValue = Number(populationEquivalent) || null;
+
+  const bandSuggestion = ssPV != null
+    ? resultBand(ssPV)
+    : { value: null as string | null, reason: "Complete the subsurface percolation test (Step 4/5) first." };
+
+  const loadingRateSuggestion = bandSuggestion.value
+    ? loadingRateForBand(bandSuggestion.value)
+    : { value: null as number | null, reason: bandSuggestion.reason };
+
+  const filterAreaSuggestion = (peValue && ssPV != null)
+    ? polishingFilterArea(peValue, ssPV)
+    : { value: null as number | null, reason: "Enter P.E. and complete the percolation test first." };
+
+  const polishTrenchSuggestion = (peValue && ssPV != null)
+    ? polishingTrenchLength(peValue, ssPV)
+    : { value: null as { totalM: number; trenchCount: number } | null, reason: "Enter P.E. and complete the percolation test first." };
+
+  const septicTrenchSuggestion = (peValue && ssPV != null)
+    ? septicTrenchLength(peValue, ssPV)
+    : { value: null as { totalM: number; trenchCount: number } | null, reason: "Enter P.E. and complete the percolation test first." };
+
+  const paragraphTemplateKey = pickParagraphTemplateKey(dwwtsInstall, slope);
+  const suggestedParagraph = paragraphTemplateKey
+    ? renderParagraphTemplate(paragraphTemplateKey, {
+        pe: peValue, band: bandSuggestion.value,
+        area: filterAreaSuggestion.value, loadingRate: loadingRateSuggestion.value,
+      })
+    : null;
+  const paragraphReason = paragraphTemplateKey
+    ? "Auto-filled from the system + slope you selected (EPA CoP 2021) — edit freely."
+    : (dwwtsInstall
+        ? "Record the site slope in Visual Assessment to get a suggested paragraph."
+        : "Choose a system above to get a suggested paragraph.");
+
+  // Soil polishing filter area: pfSurfaceArea (Chapter 8) and surfaceAreaM2
+  // (Discharge Route) map to the *same* PDF field on the backend, so they
+  // must always agree — the second effect below keeps surfaceAreaM2
+  // mirrored to pfSurfaceArea any time it changes, suggested or hand-edited.
+  useEffect(() => {
+    if (filterAreaSuggestion.value != null && !pfSurfaceArea) {
+      setPfSurfaceArea(String(filterAreaSuggestion.value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterAreaSuggestion.value]);
+
+  useEffect(() => {
+    if (pfSurfaceArea && pfSurfaceArea !== surfaceAreaM2) {
+      setSurfaceAreaM2(pfSurfaceArea);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pfSurfaceArea]);
+
+  useEffect(() => {
+    if (polishTrenchSuggestion.value != null && !optGravityLength) {
+      setOptGravityLength(String(polishTrenchSuggestion.value.totalM));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polishTrenchSuggestion.value?.totalM]);
+
+  useEffect(() => {
+    if (septicTrenchSuggestion.value != null) {
+      if (!septPercLenTrenches) setSeptPercLenTrenches(String(septicTrenchSuggestion.value.totalM));
+      if (!septPercNoTrenches) setSeptPercNoTrenches(String(septicTrenchSuggestion.value.trenchCount));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [septicTrenchSuggestion.value?.totalM, septicTrenchSuggestion.value?.trenchCount]);
+
+  useEffect(() => {
+    if (loadingRateSuggestion.value != null && !hydraulicLoadingRate) {
+      setHydraulicLoadingRate(String(loadingRateSuggestion.value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRateSuggestion.value]);
+
+  useEffect(() => {
+    if (suggestedParagraph && !siteSpecificConditions.trim()) {
+      setSiteSpecificConditions(suggestedParagraph);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestedParagraph]);
+
+  // Discharge route: a single house is never permitted to discharge to
+  // surface water, so default to groundwater and let the screens grey out
+  // the surface-water option rather than leaving it a live choice.
+  useEffect(() => {
+    if (!dwwtsDischargeTo) setDwwtsDischargeTo("Ground Water");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   function expandHorizonsToDepthRows(src: Horizon[]) {
   // Build quick lookup: for any depth d, which horizon covers it?
@@ -1712,6 +1822,11 @@ const TANK_TYPES = [
         return;
       }
 
+      // Force-save whatever's still sitting in the autosave debounce window
+      // (up to 600ms of typing) before building the payload below, so the
+      // very last edit before tapping this button is never missed — both in
+      // the generated report and in what's saved/synced for this report.
+      await flushAutoSave();
 
       const reportPayload = {
           // PAGE 1
@@ -2798,8 +2913,12 @@ const TANK_TYPES = [
     }
   };
 
-  // Auto-save all form data to Supabase
-  useAutoSave(
+  // Auto-save all form data locally (and queue a background sync) as the
+  // engineer types — see hooks/useAutoSave.ts. flushAutoSave() forces
+  // whatever's still in the debounce window to save immediately; used by
+  // generateReport() below so the last few keystrokes before tapping
+  // "Generate Report" are never missed.
+  const flushAutoSave = useAutoSave(
     currentReportId,
     {
       clientInfo: {
@@ -3309,6 +3428,7 @@ return (
         setInvertLevel={setInvertLevel}
         siteSpecificConditions={siteSpecificConditions}
         setSiteSpecificConditions={setSiteSpecificConditions}
+        siteSpecificConditionsHint={paragraphReason}
       />
     )}
 
@@ -3372,6 +3492,10 @@ return (
         setSurfaceAreaM2={setSurfaceAreaM2}
         dischargeRateM3hr={dischargeRateM3hr}
         setDischargeRateM3hr={setDischargeRateM3hr}
+        filterAreaHint={filterAreaSuggestion.reason}
+        trenchHint={polishTrenchSuggestion.reason}
+        septicTrenchHint={septicTrenchSuggestion.reason}
+        loadingRateHint={loadingRateSuggestion.reason}
       />
     )}
 

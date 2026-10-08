@@ -2,6 +2,7 @@ import React from "react";
 import { ScrollView, View, Text, StyleSheet } from "react-native";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, CheckRow } from "@/components/ui/kit";
+import { SLOPE_OPTIONS } from "@/lib/designRules/epaCop2021";
 
 interface VisualAssessmentProps {
   landscapePosition: string; setLandscapePosition: (v: string) => void;
@@ -51,9 +52,9 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
           <View>
             <Text style={styles.label}>Slope</Text>
             <View style={{ gap: 8 }}>
-              {slopeOpt("Steep (>1.5)", "Steep (>1.5)")}
-              {slopeOpt("Shallow (1.5-1:20)", "Shallow (1.5–1:20)")}
-              {slopeOpt("Relatively Flat (<1:20)", "Relatively Flat (<1:20)")}
+              {slopeOpt(SLOPE_OPTIONS.steep, "Steep (>1.5)")}
+              {slopeOpt(SLOPE_OPTIONS.shallow, "Shallow (1.5–1:20)")}
+              {slopeOpt(SLOPE_OPTIONS.relativelyFlat, "Relatively Flat (<1:20)")}
             </View>
           </View>
           <FormInput label="Slope Comment" value={slopeComment} onChangeText={setSlopeComment} placeholder="e.g. Slight gradient to the south" />

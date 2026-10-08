@@ -50,10 +50,16 @@ export async function enqueue(
   const db = await getDb();
   const now = new Date().toISOString();
 
-  if (type === 'report_upsert' && reportId) {
+  // report_upsert coalesces because every debounced section-save enqueues
+  // one — without this, rapid typing would leave dozens of near-duplicate
+  // rows. report_generate coalesces for a different reason: tapping
+  // "Generate Report" twice while offline (impatience, or just tapping
+  // again to check) must not queue two separate report generations — that
+  // would mean two PDFs and, worse, two emails once back online.
+  if ((type === 'report_upsert' || type === 'report_generate') && reportId) {
     const existing = await db.getFirstAsync<{ id: string }>(
-      `SELECT id FROM sync_queue WHERE type = 'report_upsert' AND report_id = ? AND status = 'pending' LIMIT 1`,
-      [reportId]
+      `SELECT id FROM sync_queue WHERE type = ? AND report_id = ? AND status = 'pending' LIMIT 1`,
+      [type, reportId]
     );
     if (existing) {
       await db.runAsync(

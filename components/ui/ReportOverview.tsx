@@ -108,6 +108,7 @@ export function ReportOverview({
           title={generating ? 'Generating…' : 'Generate PDF Report'}
           onPress={onGenerate}
           disabled={generating}
+          loading={generating}
         />
       </View>
     </View>

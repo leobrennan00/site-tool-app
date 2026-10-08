@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ViewStyle, TextStyle,
-  Animated, Easing, KeyboardTypeOptions, StyleProp,
+  Animated, Easing, KeyboardTypeOptions, StyleProp, ActivityIndicator,
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { Brand, Font, Shadow, SectionMeta } from '@/constants/theme';
 import { IcoChevronLeft, IcoCheck } from './icons';
 
@@ -111,7 +112,7 @@ export function RadioGroup<T extends string>({
   label, options, value, onChange,
 }: {
   label?: string;
-  options: { label: string; value: T }[];
+  options: { label: string; value: T; disabled?: boolean }[];
   value: T | null;
   onChange: (v: T) => void;
 }) {
@@ -124,13 +125,16 @@ export function RadioGroup<T extends string>({
           return (
             <Pressable
               key={opt.value}
-              onPress={() => onChange(opt.value)}
-              style={[styles.choiceRow, active && styles.choiceRowActive]}
+              onPress={() => !opt.disabled && onChange(opt.value)}
+              disabled={opt.disabled}
+              style={[styles.choiceRow, active && styles.choiceRowActive, opt.disabled && styles.choiceRowDisabled]}
             >
               <View style={[styles.radioOuter, active && styles.radioOuterActive]}>
                 {active ? <View style={styles.radioDot} /> : null}
               </View>
-              <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{opt.label}</Text>
+              <Text style={[styles.choiceText, active && styles.choiceTextActive, opt.disabled && { color: Brand.textMuted }]}>
+                {opt.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -155,14 +159,30 @@ export function CheckRow({
 
 /* ───────────────────────── PrimaryBtn ───────────────────────── */
 export function PrimaryBtn({
-  title, onPress, disabled, style,
-}: { title: string; onPress?: () => void; disabled?: boolean; style?: StyleProp<ViewStyle> }) {
+  title, onPress, disabled, loading, style,
+}: { title: string; onPress?: () => void; disabled?: boolean; loading?: boolean; style?: StyleProp<ViewStyle> }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={[styles.primaryBtn, disabled ? styles.primaryBtnDisabled : Shadow.button, style]}
+      onPressIn={() => {
+        if (!disabled && process.env.EXPO_OS === 'ios') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+      }}
+      // android_ripple + the pressed-opacity style + the haptic tap above
+      // all fire the instant a finger touches down, before onPress or any
+      // state update — so a tap always visibly/physically registers even if
+      // whatever it triggers takes a moment (e.g. a local save) to start.
+      android_ripple={disabled ? undefined : { color: 'rgba(255,255,255,0.25)' }}
+      style={({ pressed }) => [
+        styles.primaryBtn,
+        disabled ? styles.primaryBtnDisabled : Shadow.button,
+        pressed && !disabled && styles.primaryBtnPressed,
+        style,
+      ]}
     >
+      {loading && <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />}
       <Text style={[styles.primaryBtnText, disabled && { color: Brand.textMuted }]}>{title}</Text>
     </Pressable>
   );
@@ -174,9 +194,16 @@ export function SecondaryBtn({
   return (
     <Pressable
       onPress={onPress}
-      style={[
+      onPressIn={() => {
+        if (process.env.EXPO_OS === 'ios') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+      }}
+      android_ripple={{ color: danger ? 'rgba(192,57,43,0.15)' : 'rgba(46,107,79,0.12)' }}
+      style={({ pressed }) => [
         styles.secondaryBtn,
         danger ? { backgroundColor: Brand.dangerTint, borderColor: Brand.danger } : { backgroundColor: Brand.surface, borderColor: Brand.border },
+        pressed && { opacity: 0.75 },
         style,
       ]}
     >
@@ -369,6 +396,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Brand.bg,
   },
   choiceRowActive: { borderColor: Brand.primary, backgroundColor: Brand.primaryTint },
+  choiceRowDisabled: { opacity: 0.45 },
   choiceText: { fontSize: 15, fontFamily: Font.regular, color: Brand.text },
   choiceTextActive: { fontFamily: Font.medium, color: Brand.primaryDark },
   radioOuter: {
@@ -385,9 +413,10 @@ const styles = StyleSheet.create({
 
   primaryBtn: {
     backgroundColor: Brand.primary, borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
   },
   primaryBtnDisabled: { backgroundColor: Brand.border },
+  primaryBtnPressed: { opacity: 0.8 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontFamily: Font.semibold },
   secondaryBtn: {
     borderRadius: 14, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5,

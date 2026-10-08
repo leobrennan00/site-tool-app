@@ -62,6 +62,13 @@ interface TreatmentSystemsProps {
   setSurfaceAreaM2: (val: string) => void;
   dischargeRateM3hr: string;
   setDischargeRateM3hr: (val: string) => void;
+  /** Short "why this number" explanations for the EPA CoP 2021 sizing
+   *  suggestions — see lib/designRules/dwwtsSizing.ts. Undefined/empty
+   *  hints just render nothing. */
+  filterAreaHint?: string;
+  trenchHint?: string;
+  septicTrenchHint?: string;
+  loadingRateHint?: string;
 }
 
 export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
@@ -95,6 +102,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
     hydraulicLoadingRate, setHydraulicLoadingRate,
     surfaceAreaM2, setSurfaceAreaM2,
     dischargeRateM3hr, setDischargeRateM3hr,
+    filterAreaHint, trenchHint, septicTrenchHint, loadingRateHint,
   } = props;
 
   return (
@@ -122,7 +130,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
         </View>
 
         <Text style={styles.subsectionTitle}>Percolation Area</Text>
-        <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", gap: 12, marginBottom: 4 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>No. of Trenches</Text>
             <TextInput
@@ -144,7 +152,8 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
             />
           </View>
         </View>
-        <View style={styles.row}>
+        {septicTrenchHint ? <Text style={styles.hintText}>{septicTrenchHint}</Text> : null}
+        <View style={[styles.row, { marginTop: 12 }]}>
           <Text style={styles.label}>Invert Level (m)</Text>
           <TextInput
             style={styles.input}
@@ -392,6 +401,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
             keyboardType="numeric"
             placeholder="e.g. 45.00"
           />
+          {filterAreaHint ? <Text style={styles.hintText}>{filterAreaHint}</Text> : null}
         </View>
 
         <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
@@ -433,6 +443,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
               keyboardType="numeric"
               placeholder="—"
             />
+            {trenchHint ? <Text style={styles.hintText}>{trenchHint}</Text> : null}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.label} numberOfLines={2}>
@@ -522,22 +533,14 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
               Groundwater
             </Text>
           </Pressable>
-          <Pressable
-            onPress={() => setDischargeChoice("surface")}
-            style={[
-              styles.segmentBtn,
-              dischargeChoice === "surface" && styles.segmentBtnActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                dischargeChoice === "surface" && styles.segmentTextActive,
-              ]}
-            >
-              Surface Water (licence required)
+          {/* A single house is never permitted to discharge to surface
+              water — greyed out and non-interactive rather than removed,
+              so it's still visible as the (unavailable) alternative. */}
+          <View style={[styles.segmentBtn, styles.segmentBtnDisabled]}>
+            <Text style={[styles.segmentText, { color: Brand.textMuted }]}>
+              Surface Water — not used for a single house
             </Text>
-          </Pressable>
+          </View>
         </View>
 
         <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
@@ -553,6 +556,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
               keyboardType="numeric"
               placeholder="e.g. 20"
             />
+            {loadingRateHint ? <Text style={styles.hintText}>{loadingRateHint}</Text> : null}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Surface Area (m²)</Text>
@@ -686,6 +690,16 @@ const styles = StyleSheet.create({
   segmentBtnActive: {
     backgroundColor: Brand.primaryTint,
     borderColor: Brand.primary,
+  },
+  segmentBtnDisabled: {
+    backgroundColor: Brand.borderLight,
+    opacity: 0.6,
+  },
+  hintText: {
+    fontSize: 11,
+    fontFamily: Font.regular,
+    color: Brand.textMuted,
+    marginTop: 5,
   },
   segmentText: {
     fontSize: 15,
