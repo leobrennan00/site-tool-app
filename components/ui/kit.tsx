@@ -368,7 +368,12 @@ const styles = StyleSheet.create({
     borderBottomColor: Brand.borderLight,
   },
   headerSide: { width: 64, justifyContent: 'center' },
-  headerBtn: { paddingHorizontal: 8, paddingVertical: 6 },
+  // 44x44pt minimum tap target (Apple HIG / Material); hitSlop on top of this
+  // widens it further without affecting layout.
+  headerBtn: {
+    minWidth: 44, minHeight: 44, paddingHorizontal: 8,
+    alignItems: 'center', justifyContent: 'center',
+  },
   headerTitle: {
     flex: 1, textAlign: 'center',
     fontSize: 16, fontFamily: Font.semibold, color: Brand.text, letterSpacing: -0.2,

@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { Brand, Font } from '@/constants/theme';
 import { Card, CardTitle, FormInput, PrimaryBtn, GradientHero } from '@/components/ui/kit';
 import { IcoSignOut } from '@/components/ui/icons';
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { PrefixPicker } from "@/components/ui/PrefixPicker";
+import { fullName as formatFullName } from "@/lib/names";
 
 interface SettingsProps {
   onClose: () => void;
@@ -146,7 +149,7 @@ export default function SettingsTab(props: SettingsProps) {
   }
 
   const initials = `${firstName?.[0] || ''}${surname?.[0] || ''}`.toUpperCase() || 'SA';
-  const fullName = `${prefix} ${firstName} ${surname}`.replace(/\s+/g, ' ').trim();
+  const fullName = formatFullName(prefix, firstName, surname);
 
   if (loading) {
     return (
@@ -157,7 +160,7 @@ export default function SettingsTab(props: SettingsProps) {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.content}>
       {/* Profile hero */}
       <View style={styles.profileRow}>
         <GradientHero style={styles.avatar}>
@@ -173,14 +176,8 @@ export default function SettingsTab(props: SettingsProps) {
         <CardTitle>Assessor Profile</CardTitle>
         <View style={{ gap: 14 }}>
           <FormInput label="Company" value={company} onChangeText={setCompany} placeholder="Company name" />
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <FormInput label="Prefix" value={prefix} onChangeText={setPrefix} placeholder="Mr/Mrs/Dr" />
-            </View>
-            <View style={{ flex: 2 }}>
-              <FormInput label="First Name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
-            </View>
-          </View>
+          <PrefixPicker value={prefix} onChange={setPrefix} />
+          <FormInput label="First Name" value={firstName} onChangeText={setFirstName} placeholder="First name" />
           <FormInput label="Surname" value={surname} onChangeText={setSurname} placeholder="Surname" />
           <FormInput label="Address" value={address} onChangeText={setAddress} placeholder="Address" multiline />
           <FormInput label="Qualifications" value={qualifications} onChangeText={setQualifications} placeholder="e.g. BEng, MIEI" />
@@ -215,7 +212,7 @@ export default function SettingsTab(props: SettingsProps) {
         <IcoSignOut size={18} color={Brand.danger} />
         <Text style={styles.signOutText}>Sign Out</Text>
       </Pressable>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

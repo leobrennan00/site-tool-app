@@ -1,6 +1,7 @@
 import React from "react";
-import { ScrollView, View, Text, TextInput, Pressable, StyleSheet, Modal, Button } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Modal, Button } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 type MediaRow = { area: string; depth: string; invert: string };
 
@@ -106,7 +107,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
   } = props;
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
       <View style={styles.header}>
         <Text style={styles.title}>Treatment System Details</Text>
         <Text style={styles.subtitle}>
@@ -584,7 +585,7 @@ export default function TreatmentSystemsTab(props: TreatmentSystemsProps) {
           />
         </View>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

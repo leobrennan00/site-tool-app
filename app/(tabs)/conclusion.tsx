@@ -1,11 +1,14 @@
 import React from "react";
-import { ScrollView, View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, CheckRow, RadioGroup } from "@/components/ui/kit";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 interface ConclusionProps {
-  slope: string;
-  setSlope: (val: string) => void;
+  slopeProposed: string;
+  setSlopeProposed: (val: string) => void;
+  /** 3.0 site slope — shown as a reference only, never copied in. */
+  siteSlope: string;
   sepDistancesMet: boolean;
   setSepDistancesMet: (val: boolean) => void;
   unsatDepth: string;
@@ -27,14 +30,14 @@ interface ConclusionProps {
 
 export default function ConclusionTab(props: ConclusionProps) {
   const {
-    slope, setSlope, sepDistancesMet, setSepDistancesMet, unsatDepth, setUnsatDepth,
+    slopeProposed, setSlopeProposed, siteSlope, sepDistancesMet, setSepDistancesMet, unsatDepth, setUnsatDepth,
     sPV, ssPV, suitableForDevelopment, setSuitableForDevelopment,
     optSepticTank, setOptSepticTank, optSecondary, setOptSecondary,
     optTertiary, setOptTertiary, dischargeRoute, setDischargeRoute, setCDirty,
   } = props;
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       {/* Derived value tiles */}
       <View style={styles.tileRow}>
         <View style={styles.tile}>
@@ -47,7 +50,7 @@ export default function ConclusionTab(props: ConclusionProps) {
         </View>
         <View style={styles.tile}>
           <Text style={styles.tileLabel}>Slope</Text>
-          <Text style={styles.tileValueSm} numberOfLines={2}>{slope || "—"}</Text>
+          <Text style={styles.tileValueSm} numberOfLines={2}>{slopeProposed || "—"}</Text>
         </View>
       </View>
 
@@ -56,9 +59,10 @@ export default function ConclusionTab(props: ConclusionProps) {
         <View style={{ gap: 14 }}>
           <FormInput
             label="Slope of proposed infiltration / treatment area"
-            value={slope}
-            onChangeText={setSlope}
+            value={slopeProposed}
+            onChangeText={setSlopeProposed}
             placeholder="e.g. Relatively flat / Shallow / Steep"
+            hint={siteSlope ? `For reference, 3.0 site slope: ${siteSlope}` : undefined}
           />
           <CheckRow
             label="All minimum separation distances met"
@@ -100,7 +104,7 @@ export default function ConclusionTab(props: ConclusionProps) {
         <CardTitle>Discharge Route</CardTitle>
         <FormInput value={dischargeRoute} onChangeText={setDischargeRoute} multiline placeholder="e.g. Via subsoil to groundwater" />
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

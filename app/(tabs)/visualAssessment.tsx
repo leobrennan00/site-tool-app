@@ -1,8 +1,9 @@
 import React from "react";
-import { ScrollView, View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, CheckRow } from "@/components/ui/kit";
 import { SLOPE_OPTIONS } from "@/lib/designRules/epaCop2021";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 interface VisualAssessmentProps {
   landscapePosition: string; setLandscapePosition: (v: string) => void;
@@ -44,7 +45,7 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
   );
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Card>
         <CardTitle>Landscape & Terrain</CardTitle>
         <View style={{ gap: 14 }}>
@@ -102,7 +103,7 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
           multiline
         />
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

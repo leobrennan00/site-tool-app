@@ -1,6 +1,9 @@
 import React from "react";
-import { ScrollView, View, Text, TextInput, StyleSheet, Platform } from "react-native";
+import { ScrollView, View, Text, TextInput, StyleSheet, Platform, Pressable } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { TimeField } from "@/components/ui/TimeField";
+import { SoilLayer, LAYER_TEXT_FIELDS, newLayer, layerErrors } from "@/lib/trialHole";
 
 // Constants for soil horizons grid - matching the actual report format
 // The text box has 50 lines, with depth markers from 0.1m to 3.5m (35 markers)
@@ -53,6 +56,9 @@ interface TrialHoleProps {
   setThColourCol: (val: string) => void;
   thFlowpathsCol: string;
   setThFlowpathsCol: (val: string) => void;
+  // Structured soil layers (replace the free-text columns above for new logs)
+  soilLayers: SoilLayer[];
+  setSoilLayers: (layers: SoilLayer[]) => void;
   // Percolation estimates
   likelySubsurfaceP: string;
   setLikelySubsurfaceP: (val: string) => void;
@@ -79,6 +85,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
     thCompactnessCol, setThCompactnessCol,
     thColourCol, setThColourCol,
     thFlowpathsCol, setThFlowpathsCol,
+    soilLayers, setSoilLayers,
     likelySubsurfaceP, setLikelySubsurfaceP,
     likelySurfaceP, setLikelySurfaceP,
     trialHoleEvaluation, setTrialHoleEvaluation,
@@ -101,8 +108,23 @@ export default function TrialHoleTab(props: TrialHoleProps) {
   const handleColourChange = (text: string) => setThColourCol(limitTo50Lines(text));
   const handleFlowpathsChange = (text: string) => setThFlowpathsCol(limitTo50Lines(text));
 
+  // Older reports were logged as free text in six big columns; keep showing
+  // those (read/edit) only when a report has them and no structured layers.
+  const hasLegacyColumns = [thClassificationCol, thDilatancyCol, thStructureCol, thCompactnessCol, thColourCol, thFlowpathsCol]
+    .some((t) => (t || "").trim() !== "");
+  const showLegacyGrid = hasLegacyColumns && soilLayers.length === 0;
+  const errors = layerErrors(soilLayers, trialDepth);
+
+  const updateLayer = (id: string, key: keyof SoilLayer, value: string) =>
+    setSoilLayers(soilLayers.map((l) => (l.id === id ? { ...l, [key]: value } : l)));
+  const addLayer = () => {
+    const last = soilLayers[soilLayers.length - 1];
+    setSoilLayers([...soilLayers, newLayer(last ? last.to : "0.0")]);
+  };
+  const removeLayer = (id: string) => setSoilLayers(soilLayers.filter((l) => l.id !== id));
+
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
       <View style={styles.header}>
         <Text style={styles.title}>Trial Hole Assessment</Text>
         <Text style={styles.subtitle}>
@@ -177,12 +199,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
           </View>
           <View style={styles.dateCol}>
             <Text style={styles.label}>Excavation Time</Text>
-            <TextInput
-              style={styles.input}
-              value={excavTime}
-              onChangeText={setExcavTime}
-              placeholder="HH:mm"
-            />
+            <TimeField style={styles.input} value={excavTime} onChange={setExcavTime} />
           </View>
         </View>
 
@@ -198,19 +215,66 @@ export default function TrialHoleTab(props: TrialHoleProps) {
           </View>
           <View style={styles.dateCol}>
             <Text style={styles.label}>Examination Time</Text>
-            <TextInput
-              style={styles.input}
-              value={examTime}
-              onChangeText={setExamTime}
-              placeholder="HH:mm"
-            />
+            <TimeField style={styles.input} value={examTime} onChange={setExamTime} />
           </View>
         </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Soil Horizons</Text>
-        <Text style={styles.note}>Scroll horizontally to view all columns</Text>
+        <Text style={styles.cardTitle}>Soil Layers</Text>
+        <Text style={styles.note}>
+          One entry per layer, from the surface down to the bottom of the hole. Each layer is drawn
+          on the report log at its true depth.
+        </Text>
+
+        {soilLayers.map((layer, i) => (
+          <View key={layer.id} style={styles.layerBox}>
+            <View style={styles.layerHeader}>
+              <Text style={styles.layerTitle}>Layer {i + 1}</Text>
+              <Pressable onPress={() => removeLayer(layer.id)} hitSlop={8} style={styles.layerRemove} accessibilityLabel={`Remove layer ${i + 1}`}>
+                <Text style={styles.layerRemoveText}>Remove</Text>
+              </Pressable>
+            </View>
+            <View style={styles.dateRow}>
+              <View style={styles.dateCol}>
+                <Text style={styles.label}>From (m)</Text>
+                <TextInput style={styles.input} value={layer.from} onChangeText={(v) => updateLayer(layer.id, "from", v)}
+                  keyboardType="decimal-pad" placeholder="e.g. 0.0" />
+              </View>
+              <View style={styles.dateCol}>
+                <Text style={styles.label}>To (m)</Text>
+                <TextInput style={styles.input} value={layer.to} onChangeText={(v) => updateLayer(layer.id, "to", v)}
+                  keyboardType="decimal-pad" placeholder="e.g. 0.3" />
+              </View>
+            </View>
+            {LAYER_TEXT_FIELDS.map((f) => (
+              <View key={f.key} style={styles.row}>
+                <Text style={styles.label}>{f.label}</Text>
+                <TextInput style={styles.input} value={layer[f.key]} multiline
+                  onChangeText={(v) => updateLayer(layer.id, f.key, v)} />
+              </View>
+            ))}
+          </View>
+        ))}
+
+        <Pressable onPress={addLayer} style={styles.addLayer} accessibilityRole="button">
+          <Text style={styles.addLayerText}>+ Add layer</Text>
+        </Pressable>
+
+        {errors.length > 0 && (
+          <View style={styles.warnBox}>
+            {errors.map((e) => <Text key={e} style={styles.warnText}>• {e}</Text>)}
+          </View>
+        )}
+      </View>
+
+      {showLegacyGrid && (
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Soil Horizons (free text, older report)</Text>
+        <Text style={styles.note}>
+          This report was logged as free text. Add layers above to have them drawn at their true depths instead.
+          Scroll horizontally to view all columns.
+        </Text>
 
         <View style={styles.thGrid}>
           {/* LEFT: depth scale */}
@@ -313,6 +377,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
           </View>
         </View>
       </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Percolation Estimates & Evaluation</Text>
@@ -350,7 +415,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
           />
         </View>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -432,6 +497,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontFamily: Font.regular,
   },
+  layerBox: {
+    borderWidth: 1, borderColor: Brand.borderLight, borderRadius: 12, padding: 12, marginBottom: 12, backgroundColor: Brand.bg,
+  },
+  layerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  layerTitle: { fontSize: 15, fontFamily: Font.semibold, color: Brand.text },
+  layerRemove: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
+  layerRemoveText: { fontSize: 14, fontFamily: Font.semibold, color: Brand.danger },
+  addLayer: {
+    minHeight: 44, borderRadius: 12, borderWidth: 1.5, borderColor: Brand.primary, borderStyle: "dashed",
+    alignItems: "center", justifyContent: "center",
+  },
+  addLayerText: { fontSize: 15, fontFamily: Font.semibold, color: Brand.primary },
+  warnBox: { backgroundColor: Brand.amberTint, borderRadius: 10, padding: 10, marginTop: 12 },
+  warnText: { fontSize: 13, fontFamily: Font.regular, color: Brand.text, marginTop: 2 },
   thGrid: {
     flexDirection: "row",
     marginTop: 8,

@@ -1,7 +1,8 @@
 import React from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { Brand } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup } from "@/components/ui/kit";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 interface ClientInfoProps {
   fileRef: string;
@@ -38,7 +39,7 @@ export default function ClientInfoTab(props: ClientInfoProps) {
   } = props;
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Card>
         <CardTitle>File Reference</CardTitle>
         <FormInput label="File Reference" value={fileRef} onChangeText={setFileRef} placeholder="e.g. EPC-25028" autoCapitalize="characters" />
@@ -110,6 +111,6 @@ export default function ClientInfoTab(props: ClientInfoProps) {
           </View>
         )}
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }

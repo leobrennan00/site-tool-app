@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
-import { SafeAreaView, ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable, Dimensions, ActivityIndicator } from "react-native";
+import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable, Dimensions, ActivityIndicator } from "react-native";
+// react-native's own SafeAreaView is iOS-only and does nothing on Android —
+// with edge-to-edge enabled in app.json the header was drawing under the
+// status bar there. This one handles notch/status bar/dynamic island on both.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Alert } from "react-native";
 import { Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -14,6 +18,7 @@ import { isOnline, subscribeOnline } from "../../lib/network";
 import { enqueue, subscribeQueueChanged } from "../../lib/syncQueue";
 import { getUploadedPhotoUrls } from "../../lib/offlinePhotos";
 import { SyncStatusBar } from "@/components/ui/SyncStatusBar";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import {
   peFromBedrooms,
   resultBand,
@@ -24,6 +29,11 @@ import {
   pickParagraphTemplateKey,
   renderParagraphTemplate,
 } from "@/lib/designRules/dwwtsSizing";
+import { vulnerabilityFromGsi, vulnerabilityLabelFromGsi, deriveGwpr } from "@/lib/designRules/groundwater";
+import { cacheMapsLocally, getLocalMapIndex, LocalMapIndex } from "@/lib/offlineMaps";
+import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
+import { normalizePrefix } from "@/lib/names";
+import { SoilLayer, layerErrors, layersForPayload } from "@/lib/trialHole";
 import { startSyncEngine } from "../../lib/syncProcessor";
 import { markDeskStudyPending, markDeskStudyReady, getDeskStudyStatus, DeskStudyStatus } from "../../lib/deskStudyCache";
 import MapsTab from "./maps";
@@ -134,6 +144,19 @@ export default function Index() {
   // 'none' = never attempted · 'pending' = waiting on signal to fetch ·
   // 'ready' = desk study + maps already fetched for this report.
   const [deskStudyStatus, setDeskStudyStatus] = useState<DeskStudyStatus>('none');
+  // Remote map URL → copy saved on this device, so maps show and zoom offline
+  // (lib/offlineMaps.ts). Device-local only; never synced.
+  const [localMapUris, setLocalMapUris] = useState<LocalMapIndex>({});
+  const openReportIdRef = useRef<string | null>(null);
+  useEffect(() => { openReportIdRef.current = currentReportId; }, [currentReportId]);
+  // Downloads any maps for this report not yet on the device, then shows them
+  // — but only if that report is still the one open when downloads finish.
+  const syncLocalMaps = (reportId: string, urls: string[]) => {
+    if (!urls.length || !isOnline()) return;
+    cacheMapsLocally(reportId, urls)
+      .then((index) => { if (openReportIdRef.current === reportId) setLocalMapUris(index); })
+      .catch((err) => console.warn('Saving maps for offline use failed:', err));
+  };
   // Uploaded (remote) photo URLs for the *current* report — PhotosTab now
   // owns photo capture/display itself from the local DB (see
   // app/(tabs)/photos.tsx); this state only exists so useAutoSave and the
@@ -208,6 +231,8 @@ export default function Index() {
   const [aquiferCategory, setAquiferCategory] = useState<"Regionally Important" | "Locally Important" | "Poor" | null>(null);
   const [aquiferCode, setAquiferCode] = useState<string>("");
   const [vulnerability, setVulnerability] = useState<"Extreme" | "High" | "Moderate" | "Low" | null>(null);
+  // GSI label at the site point, e.g. "Extreme (X) – rock at or near surface or karst"
+  const [vulnerabilityGsiLabel, setVulnerabilityGsiLabel] = useState<string>("");
   const [gwBody, setGwBody] = useState("");
   const [gwStatus, setGwStatus] = useState<"Good" | "Poor" | null>(null);
   const [nearbySupply, setNearbySupply] = useState("");  // e.g. "None" or scheme name
@@ -220,6 +245,10 @@ export default function Index() {
   const [deskComments, setDeskComments] = useState("");
   const [landscapePosition, setLandscapePosition] = useState("");
   const [slope, setSlope] = useState<string>("");
+  // 4.0 "Slope of proposed infiltration / treatment area" — typed by the
+  // assessor, separate from the 3.0 site slope above (they used to share
+  // one state, so 4.0 printed whatever 3.0 said).
+  const [slopeProposed, setSlopeProposed] = useState<string>("");
   const [existingLandUse, setExistingLandUse] = useState("");
   const [vegIndicators, setVegIndicators] = useState("");
   const [slopeComment, setSlopeComment] = useState("");
@@ -249,8 +278,6 @@ export default function Index() {
 
   const [likelySubsurfaceP, setLikelySubsurfaceP] = useState("");
   const [likelySurfaceP, setLikelySurfaceP] = useState("");
-  const [horizonErrors, setHorizonErrors] = useState<string[]>([]);
-  const [trialHoleValid, setTrialHoleValid] = useState(false);
   const [trialDepth, setTrialDepth] = useState("");
   const [depthBedrock, setDepthBedrock] = useState("");
   const [depthWaterTable, setDepthWaterTable] = useState("");
@@ -553,27 +580,12 @@ const TANK_TYPES = [
         }
       }
 
-      // --- Vulnerability (map description -> enum) ---
-      const vul = summaries.vulnerability;
-      if (vul && typeof vul.description === "string") {
-        const desc = String(vul.description);
-        const lower = desc.toLowerCase();
-
-        let vulCat: "Extreme" | "High" | "Moderate" | "Low" | null = null;
-        if (lower.includes("extreme")) {
-          vulCat = "Extreme";
-        } else if (lower.includes("high")) {
-          vulCat = "High";
-        } else if (lower.includes("moderate")) {
-          vulCat = "Moderate";
-        } else if (lower.includes("low")) {
-          vulCat = "Low";
-        }
-
-        if (vulCat && !vulnerability) {
-          setVulnerability(vulCat as any);
-        }
+      // --- Vulnerability ---
+      const vulCat = vulnerabilityFromGsi(summaries.vulnerability);
+      if (vulCat && !vulnerability) {
+        setVulnerability(vulCat);
       }
+      setVulnerabilityGsiLabel(vulnerabilityLabelFromGsi(summaries.vulnerability) ?? "");
 
       // --- Groundwater Body ---
       const gwb = summaries.groundwater_body;
@@ -593,65 +605,10 @@ const TANK_TYPES = [
         }
       }
 
-      // --- Groundwater Protection Response (Table 2 — EPA CoP for DWWTS) ---
-      // Priority: SPA Inner (SI) → SPA Outer (SO) → aquifer code column
-      // Columns:   SI     SO     Rk     Rf/Rg  Lm/Lg  Ll     Pl     Pu
-      // Extreme:   R3²    R3¹    R2²    R2²    R2¹    R2¹    R2¹    R2¹
-      // High:      R2⁴    R2³    R2¹    R1     R1     R1     R1     R1
-      // Moderate:  R2⁴    R2³    R1     R1     R1     R1     R1     R1
-      // Low:       R2⁴    R1     R1     R1     R1     R1     R1     R1
-      const gwpTable2: Record<string, Record<string, string>> = {
-        "Extreme":  { SI: "R3²", SO: "R3¹", Rk: "R2²", "Rf/Rg": "R2²", "Lm/Lg": "R2¹", Ll: "R2¹", Pl: "R2¹", Pu: "R2¹" },
-        "High":     { SI: "R2⁴", SO: "R2³", Rk: "R2¹", "Rf/Rg": "R1",  "Lm/Lg": "R1",  Ll: "R1",  Pl: "R1",  Pu: "R1"  },
-        "Moderate": { SI: "R2⁴", SO: "R2³", Rk: "R1",  "Rf/Rg": "R1",  "Lm/Lg": "R1",  Ll: "R1",  Pl: "R1",  Pu: "R1"  },
-        "Low":      { SI: "R2⁴", SO: "R1",  Rk: "R1",  "Rf/Rg": "R1",  "Lm/Lg": "R1",  Ll: "R1",  Pl: "R1",  Pu: "R1"  },
-      };
-
-      // Map auto-detected aquifer code to Table 2 column key
-      // GSI raw codes (AQUIFERCAT) include sub-codes like Rkc/Rkd that must resolve to Rk
-      const aqCodeToCol: Record<string, string> = {
-        "Rk":    "Rk",
-        "Rkc":   "Rk",    // karstified conduit
-        "Rkd":   "Rk",    // karstified diffuse
-        "Rf/Rk": "Rk",    // mixed fissured/karstified — conservative Rk column
-        "Rf":    "Rf/Rg",
-        "Rg":    "Rf/Rg",
-        "Lm":    "Lm/Lg",
-        "Lk":    "Lm/Lg", // karstified locally important
-        "Ll":    "Ll",
-        "Pl":    "Pl",
-        "Pu":    "Pu",
-      };
-
-      const derivedVul = summaries.vulnerability?.description
-        ? (() => {
-            const l = summaries.vulnerability.description.toLowerCase();
-            if (l.includes("extreme"))  return "Extreme";
-            if (l.includes("high"))     return "High";
-            if (l.includes("moderate")) return "Moderate";
-            if (l.includes("low"))      return "Low";
-            return null;
-          })()
-        : null;
-
-      if (derivedVul && !gwProtectionResponse) {
-        const spaData = summaries.source_protection;
-        let col: string | null = null;
-
-        if (spaData?.SI) {
-          col = "SI";
-        } else if (spaData?.SO) {
-          col = "SO";
-        } else {
-          const rawCode = String(summaries.aquifer?.code ?? "").trim();
-          col = aqCodeToCol[rawCode] ?? null;
-        }
-
-        if (col) {
-          const response = gwpTable2[derivedVul]?.[col];
-          if (response) setGwProtectionResponse(response);
-        }
-      }
+      // Groundwater Protection Response isn't set here any more (it used to be
+      // derived once, from this raw response, and silently skipped whenever
+      // vulnerability didn't parse). It's now derived reactively from the
+      // form's aquifer + vulnerability + SPA values — see the GWPR effect.
 
       // --- Groundwater Flow Direction ---
       const flow = summaries.groundwater_flow;
@@ -726,7 +683,7 @@ const TANK_TYPES = [
   /* keep your existing:
     sepDistancesMet, unsatDepth, suitableForDevelopment,
     optSepticTank, optSecondary, optTertiary, dischargeRoute
-    and REUSE your earlier `slope` (do not create a new slope state)
+    (4.0 slope is `slopeProposed`, not the 3.0 `slope`)
   */
 
   // --- auto-fill control (dirty flags = user has edited) ---
@@ -941,21 +898,6 @@ const TANK_TYPES = [
 
 
 
-  type Horizon = {
-    id: string;
-    from: string;
-    to: string;
-    texture?: string;        // free text
-    plasticity?: string;     // free text
-    dilatancy?: string;      // free text
-    structure?: string;      // free text
-    compactness?: string;    // free text
-    colour?: string;         // free text
-    flowpaths?: string;      // free text (e.g., "roots, cracks")
-    notes?: string;          // free text
-  };
-
-
   type StandardFill = { start: string; finish: string; deltaMin?: number };
   type StandardHole = {
     id: string;                // "1" | "2" | "3"
@@ -979,111 +921,44 @@ const TANK_TYPES = [
 
 
 
-  const [horizons, setHorizons] = useState<Horizon[]>([
-    { id: Math.random().toString(36).slice(2), from: "0.0", to: "" },
-  ]);
+  // 3.2 soil layers (from/to + the six log columns). Drawn on the PDF at
+  // their true depths by the backend (pdf_fill.stamp_trial_hole_log).
+  const [soilLayers, setSoilLayers] = useState<SoilLayer[]>([]);
 
-  const [editingHorizonId, setEditingHorizonId] = useState<string | null>(null);
-
-
-
-  const addHorizon = () => {
-    const last = horizons[horizons.length - 1];
-    const start = last?.to || (trialDepth || "0.0");
-    setHorizons((h) => [...h, { id: Math.random().toString(36).slice(2), from: start, to: "" }]);
-  };
-
-  const copyLastHorizon = () => {
-    const last = horizons[horizons.length - 1];
-    if (!last) return addHorizon();
-    setHorizons((h) => [
-      ...h,
-      { id: Math.random().toString(36).slice(2), from: last.to || last.from, to: last.to },
-    ]);
-  };
-
-  const updateHorizon = (id: string, field: "from" | "to", value: string) => {
-    setHorizons((h) => h.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
-  };
-
-  const removeHorizon = (id: string) => {
-    setHorizons((h) => h.filter((row) => row.id !== id));
-  };
-
-  const getHorizonErrors = (): string[] => {
-    const errs: string[] = [];
-    const EPS = 0.01;
-
-    const parsed = horizons.map((h, i) => ({
-      i,
-      from: parseFloat(h.from),
-      to: parseFloat(h.to),
-      raw: h,
-    }));
-
-    parsed.forEach(({ i, from, to }) => {
-      if (Number.isNaN(from)) errs.push(`Horizon ${i + 1}: “From” is not a number.`);
-      if (Number.isNaN(to)) errs.push(`Horizon ${i + 1}: “To” is not a number.`);
-      if (!Number.isNaN(from) && !Number.isNaN(to) && !(from < to)) {
-        errs.push(`Horizon ${i + 1}: “From” must be less than “To”.`);
-      }
-    });
-    if (errs.length) return errs;
-
-    const sorted = [...parsed].sort((a, b) => a.from - b.from);
-    if (sorted.length && Math.abs(sorted[0].from - 0) > EPS) {
-      errs.push(`First horizon must start at 0.0 m.`);
-    }
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i - 1], cur = sorted[i];
-      if (cur.from > prev.to + EPS) errs.push(`Gap between horizons ${prev.i + 1} and ${cur.i + 1}.`);
-      if (cur.from < prev.to - EPS) errs.push(`Overlap between horizons ${prev.i + 1} and ${cur.i + 1}.`);
-    }
-
-    const td = parseFloat(trialDepth);
-    if (!Number.isNaN(td) && sorted.length) {
-      const lastTo = sorted[sorted.length - 1].to;
-      if (Math.abs(lastTo - td) > EPS) {
-        errs.push(`Last horizon ends at ${lastTo} m but trial depth is ${td} m.`);
-      }
-    }
-    return errs;
-  };
-
-    useEffect(() => {
-      const errs = getHorizonErrors();
-      setHorizonErrors(errs);
-      setTrialHoleValid(errs.length === 0);
-    }, [horizons, trialDepth]);
-
-    // Parse "HH:mm" to minutes from midnight; returns NaN if invalid
-    const hhmmToMin = (t: string): number => {
-      const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
-      if (!m) return NaN;
-      const h = parseInt(m[1], 10), min = parseInt(m[2], 10);
-      return h * 60 + min;
+    // Percolation arithmetic lives in lib/percolation.ts (shared with the
+    // tests and mirrored by the backend). These helpers only copy its
+    // results onto the hole objects the screens and payload already use.
+    // A hole with some but not all readings gets no value and is excluded
+    // from the overall result; the screens show which hole and why.
+    const applyStandard = <F extends { start: string; finish: string; deltaMin?: number },
+                           H extends { fills: F[]; avgDelta?: number; ts?: number }>(holes: H[]) => {
+      const updated = holes.map(h => {
+        const r = standardHole(h.fills);
+        const fills = h.fills.map((f, i) => ({ ...f, deltaMin: r.deltas[i] ?? undefined }));
+        return { ...h, fills, avgDelta: r.avgDelta ?? undefined, ts: r.value ?? undefined } as H;
+      });
+      return { updated, overall: overallResult(updated.map(h => standardHole(h.fills))).value };
     };
 
-    // Recalculate deltas, averages, t_s, and overall result
-    const recomputeStandard = (holes: StandardHole[]) => {
+    // K = T_f / T_m and T = 4.45 / K per band. This used to be computed as
+    // K = T_m / T_f, which inverted every modified-method T-value.
+    const applyModified = <B extends { start: string; finish: string; tn?: number; kt?: number; tVal?: number },
+                           H extends { bands: B[]; holeT?: number }>(holes: H[]) => {
       const updated = holes.map(h => {
-        const fills = h.fills.map(f => {
-          const s = hhmmToMin(f.start);
-          const e = hhmmToMin(f.finish);
-          const delta = !Number.isNaN(s) && !Number.isNaN(e) && e >= s ? Number(((e - s)).toFixed(2)) : undefined;
-          return { ...f, deltaMin: delta };
-        }) as [StandardFill, StandardFill, StandardFill];
-
-        const deltas = fills.map(f => f.deltaMin).filter((d): d is number => typeof d === "number");
-        const avgDelta = deltas.length === 3 ? Number((deltas.reduce((a, b) => a + b, 0) / 3).toFixed(2)) : undefined;
-        const ts = typeof avgDelta === "number" ? Number((avgDelta / 4).toFixed(2)) : undefined;
-
-        return { ...h, fills, avgDelta, ts };
+        const r = modifiedHole(h.bands);
+        const bands = h.bands.map((b, i) => ({
+          ...b,
+          tn: r.bands[i].tm ?? undefined,
+          kt: r.bands[i].k ?? undefined,
+          tVal: r.bands[i].t ?? undefined,
+        }));
+        return { ...h, bands, holeT: r.value ?? undefined } as H;
       });
+      return { updated, overall: overallResult(updated.map(h => modifiedHole(h.bands))).value };
+    };
 
-      const tsValues = updated.map(h => h.ts).filter((v): v is number => typeof v === "number");
-      const overall = tsValues.length > 0 ? Number((tsValues.reduce((a, b) => a + b, 0) / tsValues.length).toFixed(2)) : null;
-
+    const recomputeStandard = (holes: StandardHole[]) => {
+      const { updated, overall } = applyStandard(holes);
       setStdHoles(updated);
       setStdResult(overall);
     };
@@ -1134,27 +1009,8 @@ const TANK_TYPES = [
 
 
 
-    // Recalculate t_n, k_t, t_val, holeT, and overall result
     const recomputeModified = (holes: ModifiedHole[]) => {
-      const updated = holes.map(h => {
-        const bands = h.bands.map((b, i) => {
-          const s = hhmmToMin(b.start);
-          const e = hhmmToMin(b.finish);
-          const tn = !Number.isNaN(s) && !Number.isNaN(e) && e >= s ? Number(((e - s)).toFixed(2)) : undefined;
-          const kt = typeof tn === "number" ? Number((tn / TF_FACTORS[i]).toFixed(2)) : undefined;
-          const tVal = typeof kt === "number" && kt > 0 ? Number((4.45 / kt).toFixed(2)) : undefined;
-          return { ...b, tn, kt, tVal };
-        }) as [ModifiedBand, ModifiedBand, ModifiedBand, ModifiedBand];
-
-        const tVals = bands.map(b => b.tVal).filter((v): v is number => typeof v === "number");
-        const holeT = tVals.length === 4 ? Number((tVals.reduce((a, b) => a + b, 0) / 4).toFixed(2)) : undefined;
-
-        return { ...h, bands, holeT };
-      });
-
-      const holeTs = updated.map(h => h.holeT).filter((v): v is number => typeof v === "number");
-      const overall = holeTs.length > 0 ? Number((holeTs.reduce((a, b) => a + b, 0) / holeTs.length).toFixed(2)) : null;
-
+      const { updated, overall } = applyModified(holes);
       setModHoles(updated);
       setModResult(overall);
     };
@@ -1166,18 +1022,9 @@ const TANK_TYPES = [
     };
 
     const recomputeSurfaceT100 = (holes: SurfHole[]) => {
-      const upd = holes.map(h => {
-        const s = hhmmToMin(h.fillTime);
-        const e = hhmmToMin(h.waterLevelTime);
-        const t100 = !Number.isNaN(s) && !Number.isNaN(e) && e >= s ? (e - s) : undefined;
-        return { ...h, t100 };
-      });
-
-      const vals = upd.map(h => h.t100).filter((v): v is number => typeof v === "number");
-      const avg = vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null;
-
-      setSurfHoles(upd);
-      setSurfAvgT100(avg);
+      const results = holes.map(h => t100Hole(h.fillTime, h.waterLevelTime));
+      setSurfHoles(holes.map((h, i) => ({ ...h, t100: results[i].value ?? undefined })));
+      setSurfAvgT100(overallResult(results).value);
     };
 
     // convenience setter
@@ -1202,25 +1049,8 @@ const TANK_TYPES = [
 
 
     const recomputeSurfStandard = (holes: SurfStdHole[]) => {
-      const upd = holes.map(h => {
-        const fills = h.fills.map(f => {
-          const s = hhmmToMin(f.start);
-          const e = hhmmToMin(f.finish);
-          const d = !Number.isNaN(s) && !Number.isNaN(e) && e >= s ? Number(((e - s)).toFixed(2)) : undefined;
-          return { ...f, deltaMin: d };
-        }) as [SurfStdFill, SurfStdFill, SurfStdFill];
-
-        const deltas = fills.map(f => f.deltaMin).filter((x): x is number => typeof x === "number");
-        const avgDelta = deltas.length === 3 ? Number((deltas.reduce((a,b)=>a+b,0) / 3).toFixed(2)) : undefined;
-        const ts = typeof avgDelta === "number" ? Number((avgDelta / 4).toFixed(2)) : undefined;
-
-        return { ...h, fills, avgDelta, ts };
-      });
-
-      const tsVals = upd.map(h => h.ts).filter((x): x is number => typeof x === "number");
-      const overall = tsVals.length ? Number((tsVals.reduce((a,b)=>a+b,0) / tsVals.length).toFixed(2)) : null;
-
-      setSurfStdHoles(upd);
+      const { updated, overall } = applyStandard(holes);
+      setSurfStdHoles(updated);
       setSurfStdResult(overall);
     };
 
@@ -1265,25 +1095,7 @@ const TANK_TYPES = [
 
 
     const recomputeSurfModified = (holes: SurfModHole[]) => {
-    const updated = holes.map(h => {
-      const bands = h.bands.map((b, i) => {
-        const s = hhmmToMin(b.start);
-        const e = hhmmToMin(b.finish);
-        const tn  = !Number.isNaN(s) && !Number.isNaN(e) && e >= s ? Number(((e - s)).toFixed(2)) : undefined;
-        const kt  = typeof tn === "number" ? Number((tn / SURF_TF_FACTORS[i]).toFixed(2)) : undefined;
-        const tVal = typeof kt === "number" && kt > 0 ? Number((4.45 / kt).toFixed(2)) : undefined;
-        return { ...b, tn, kt, tVal };
-      }) as [SurfModBand, SurfModBand, SurfModBand, SurfModBand];
-
-      const tVals = bands.map(b => b.tVal).filter((v): v is number => typeof v === "number");
-      const holeT = tVals.length === 4 ? Number((tVals.reduce((a, b) => a + b, 0) / 4).toFixed(2)) : undefined;
-
-      return { ...h, bands, holeT };
-    });
-
-    const holeTs = updated.map(h => h.holeT).filter((v): v is number => typeof v === "number");
-    const overall = holeTs.length ? Number((holeTs.reduce((a, b) => a + b, 0) / holeTs.length).toFixed(2)) : null;
-
+    const { updated, overall } = applyModified(holes);
     setSurfModHoles(updated);
     setSurfModResult(overall);
   };
@@ -1330,16 +1142,17 @@ const TANK_TYPES = [
       setSepDistancesMet(true);
     }
 
-    // 2.3 Unsaturated depth: if horizons show requirement (e.g. 0.90 m for R1), set a sensible default
-    if (!cDirty.unsatDepth && !unsatDepth) {
-      setUnsatDepth("0.90"); // editable; change if your site requires different
-    }
+    // 2.3 Unsaturated depth is a site measurement — left for the assessor to
+    // enter (it used to be pre-filled with 0.90, which then printed on
+    // reports where nobody had measured it).
 
     // 2.4 Suitable for development: simple rule of thumb
     if (!cDirty.suitable) {
       const okSurface = sPV != null && sPV <= 90;
       const okSub = ssPV != null && ssPV <= 90;
-      const okUnsat = parseFloat(unsatDepth || "0") >= 0.9;
+      // Blank = not entered yet: don't let a missing measurement flip the
+      // suggestion (behaves as the old 0.90 default did).
+      const okUnsat = !unsatDepth.trim() || parseFloat(unsatDepth) >= 0.9;
       const okSep = sepDistancesMet;
       setSuitableForDevelopment(Boolean(okSurface && okSub && okUnsat && okSep));
     }
@@ -1448,6 +1261,28 @@ const TANK_TYPES = [
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestedParagraph]);
 
+  // ---- Groundwater Protection Response (EPA CoP Table 2) ----
+  // Derived from the form's aquifer + vulnerability (+ SPA), so it follows
+  // manual corrections too — not just the one-off desk-study lookup. It
+  // re-suggests only while the field is empty or still holds the value the
+  // app last suggested; once the assessor picks a different GWPR it's theirs.
+  const gwprSuggestion = deriveGwpr({
+    aquiferCode, aquiferCategory, vulnerability, spaSI, spaSO,
+  });
+  const gwprAutoRef = useRef<string | null>(null);
+  // A different report's saved GWPR belongs to that report's assessor, not
+  // to the app — forget the last auto value whenever the open report changes.
+  // (Declared before the effect below so it runs first in the same commit.)
+  useEffect(() => { gwprAutoRef.current = null; }, [currentReportId]);
+  useEffect(() => {
+    const untouched = !gwProtectionResponse || gwProtectionResponse === gwprAutoRef.current;
+    if (!untouched) return;
+    const next = gwprSuggestion.value ?? "";
+    if (next !== gwProtectionResponse) setGwProtectionResponse(next);
+    gwprAutoRef.current = gwprSuggestion.value;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gwprSuggestion.value]);
+
   // Discharge route: a single house is never permitted to discharge to
   // surface water, so default to groundwater and let the screens grey out
   // the surface-water option rather than leaving it a live choice.
@@ -1457,58 +1292,6 @@ const TANK_TYPES = [
   }, []);
 
 
-  function expandHorizonsToDepthRows(src: Horizon[]) {
-  // Build quick lookup: for any depth d, which horizon covers it?
-  // We treat each horizon as covering [from, to) in metres.
-  const parsed = src
-    .map(h => ({
-      ...h,
-      fromNum: parseFloat(h.from),
-      toNum: parseFloat(h.to),
-    }))
-    .filter(
-      h =>
-        !Number.isNaN(h.fromNum) &&
-        !Number.isNaN(h.toNum) &&
-        h.fromNum < h.toNum
-    )
-    .sort((a, b) => a.fromNum - b.fromNum);
-
-  const rows: {
-    depth: string;
-    classification?: string;
-    dilatancy?: string;
-    structure?: string;
-    compactness?: string;
-    colour?: string;
-    flowpaths?: string;
-  }[] = [];
-
-  // 0.1 m → 3.5 m inclusive (35 rows in the PDF)
-  for (let i = 1; i <= 35; i++) {
-    const d = +(i / 10).toFixed(1); // 0.1, 0.2, ..., 3.5
-
-    // horizon that covers this depth: [from, to)
-    // e.g. horizon 0.0–0.3 → used for 0.0≤depth<0.3 (rows 0.1 & 0.2)
-    const h = parsed.find(hz => d >= hz.fromNum && d < hz.toNum);
-
-    if (!h) continue;
-
-    rows.push({
-      depth: d.toFixed(1), // backend accepts "0.1"
-      classification: (h.texture || "").trim(),
-      dilatancy: ((h as any).plasticity ?? h.dilatancy ?? "")
-        .toString()
-        .trim(),
-      structure: (h.structure || "").trim(),
-      compactness: (h.compactness || "").trim(),
-      colour: (h.colour || "").trim(),
-      flowpaths: (h.flowpaths || "").trim(),
-    });
-  }
-
-  return rows;
-}
 
 
 
@@ -1822,6 +1605,35 @@ const TANK_TYPES = [
         return;
       }
 
+      // Percolation results that only cover some holes are still generated,
+      // but only after the assessor has seen which holes are missing.
+      const percChecks: [string, string[]][] = [
+        ["Subsurface T₁₀₀", overallResult(percHoles.map(h => t100Hole(h.fillTime, h.waterLevelTime))).warnings],
+        ["Subsurface standard method", overallResult(stdHoles.map(h => standardHole(h.fills))).warnings],
+        ["Subsurface modified method", overallResult(modHoles.map(h => modifiedHole(h.bands))).warnings],
+        ["Surface T₁₀₀", overallResult(surfHoles.map(h => t100Hole(h.fillTime, h.waterLevelTime))).warnings],
+        ["Surface standard method", overallResult(surfStdHoles.map(h => standardHole(h.fills))).warnings],
+        ["Surface modified method", overallResult(surfModHoles.map(h => modifiedHole(h.bands))).warnings],
+      ];
+      const thErrors = layerErrors(soilLayers, trialDepth);
+      if (thErrors.length) percChecks.push(["Trial hole soil layers", thErrors]);
+      const percWarnings = percChecks.filter(([, w]) => w.length);
+      if (percWarnings.length) {
+        const proceed = await new Promise<boolean>((resolve) =>
+          Alert.alert(
+            "Check before generating",
+            percWarnings.map(([name, w]) => `${name}:\n${w.join("\n")}`).join("\n\n") +
+              "\n\nPercolation averages only cover complete holes; the trial hole log is drawn as entered.",
+            [
+              { text: "Go back", style: "cancel", onPress: () => resolve(false) },
+              { text: "Generate anyway", onPress: () => resolve(true) },
+            ],
+            { cancelable: true, onDismiss: () => resolve(false) },
+          ),
+        );
+        if (!proceed) return;
+      }
+
       // Force-save whatever's still sitting in the autosave debounce window
       // (up to 600ms of typing) before building the payload below, so the
       // very last edit before tapping this button is never missed — both in
@@ -1910,8 +1722,8 @@ const TANK_TYPES = [
           th_flowpathsColumn:      (thFlowpathsCol || "").trim(),
 
 
-          // --- 3.2 Horizons grid (0.1 m rows) ---
-          //horizons: expandHorizonsToDepthRows(horizons),
+          // --- 3.2 Soil layers, drawn at true depth on the log ---
+          soil_layers: layersForPayload(soilLayers),
 
           // (optional but on this page) Likely percolation values
           likelySubsurfacePV: likelySubsurfaceP,
@@ -2117,14 +1929,14 @@ const TANK_TYPES = [
           step5_surface_comments: (surfaceStep5Comments || "").trim(),
 
           // Conclusion — page end
-          slopeProposed: (slope || "").trim(),     // e.g. "Relatively flat" / "Shallow" / "Steep"
+          slopeProposed: (slopeProposed || "").trim(),     // 4.0, typed by the assessor
           minDistances:  sepDistancesMet ? "✔" : "",         // show a tick if true, blank if false
 
 
           // --- Conclusion (Page 4) ---
           conclusion: {
-            // dropdown/text — uses your existing `slope` state
-            slope: (slope || "").trim(),
+            // 4.0 slope of proposed infiltration / treatment area (not the 3.0 site slope)
+            slope: (slopeProposed || "").trim(),
 
             // checkbox “All minimum separation distances met”
             separation_ok: !!sepDistancesMet,
@@ -2247,7 +2059,7 @@ const TANK_TYPES = [
 
           assessor: {
             company: (assCompany || "").trim(),
-            prefix: (assPrefix || "").trim(),
+            prefix: normalizePrefix(assPrefix),   // never a name typed into the Prefix box
             first_name: (assFirst || "").trim(),
             surname: (assSurname || "").trim(),
             address: (assAddress || "").trim(),
@@ -2337,6 +2149,7 @@ const TANK_TYPES = [
       setAquiferCategory(deskStudy.aquiferCategory || null);
       setAquiferCode(deskStudy.aquiferCode || '');
       setVulnerability(deskStudy.vulnerability || null);
+      setVulnerabilityGsiLabel(deskStudy.vulnerabilityGsiLabel || '');
       setGwBody(deskStudy.gwBody || '');
       setGwStatus(deskStudy.gwStatus || null);
       setNearbySupply(deskStudy.nearbySupply || '');
@@ -2387,6 +2200,7 @@ const TANK_TYPES = [
       setThCompactnessCol(trialHole.thCompactnessCol || '');
       setThColourCol(trialHole.thColourCol || '');
       setThFlowpathsCol(trialHole.thFlowpathsCol || '');
+      setSoilLayers(Array.isArray(trialHole.soilLayers) ? trialHole.soilLayers : []);
 
       const subsurfacePerc = report.subsurface_perc || {};
       setLikelySubsurfaceP(subsurfacePerc.likelySubsurfaceP || '');
@@ -2459,7 +2273,9 @@ const TANK_TYPES = [
       setSiteSpecificConditions(selectedDwwts.siteSpecificConditions || '');
 
       const conclusion = report.conclusion || {};
-      setSlope(conclusion.slope || '');
+      // Reports saved before 4.0 had its own slope stored the shared value
+      // as `slope`; carry it over once so their PDFs don't lose it.
+      setSlopeProposed(conclusion.slopeProposed ?? conclusion.slope ?? '');
       setUnsatDepth(conclusion.unsatDepth || '');
       setSepDistancesMet(conclusion.sepDistancesMet || false);
       setDischargeRoute(conclusion.dischargeRoute || '');
@@ -2488,6 +2304,15 @@ const TANK_TYPES = [
       setImgUris(report.map_urls || []);
 
       getDeskStudyStatus(report.id).then(({ status }) => setDeskStudyStatus(status));
+
+      // Show any maps already saved on this device straight away, then fetch
+      // copies of any that aren't (e.g. prepared before this update, or on
+      // another device) while there's signal.
+      setLocalMapUris({});
+      getLocalMapIndex(report.id).then((index) => {
+        if (openReportIdRef.current === report.id || openReportIdRef.current === null) setLocalMapUris(index);
+      });
+      syncLocalMaps(report.id, report.map_urls || []);
 
       // Set the current report ID
       setCurrentReportId(report.id);
@@ -2569,6 +2394,7 @@ const TANK_TYPES = [
         setAquiferCategory(null);
         setAquiferCode('');
         setVulnerability(null);
+        setVulnerabilityGsiLabel('');
         setGwBody('');
         setGwStatus(null);
         setNearbySupply('');
@@ -2581,6 +2407,7 @@ const TANK_TYPES = [
         setDeskComments('');
         setLandscapePosition('');
         setSlope('');
+        setSlopeProposed('');
         setExistingLandUse('');
         setVegIndicators('');
         setSlopeComment('');
@@ -2611,6 +2438,7 @@ const TANK_TYPES = [
         setPhotoUrls([]);
         setImgUris([]);
         setDeskStudyStatus('none');
+        setLocalMapUris({});
 
         // Reset Trial Hole data
         setTrialDepth('');
@@ -2622,7 +2450,7 @@ const TANK_TYPES = [
         setExcavTime('');
         setExamDate('');
         setExamTime('');
-        setHorizons([{ id: Math.random().toString(36).slice(2), from: "0.0", to: "" }]);
+        setSoilLayers([]);
         setTrialHoleEvaluation('');
 
         // Reset Subsurface Perc data
@@ -2797,6 +2625,11 @@ const TANK_TYPES = [
       );
       setImgUris(uris); // store all image URLs
 
+      // "Prepare for site": also save each map on the device so it can be
+      // viewed and zoomed on site with no signal. Runs in the background so
+      // desk-study prefill below isn't held up by the downloads.
+      if (currentReportId) syncLocalMaps(currentReportId, uris);
+
       // Store layer summaries/descriptions
       const summaries = json?.layer_summaries ?? {};
       const descriptions: Record<string, string> = {};
@@ -2825,6 +2658,17 @@ const TANK_TYPES = [
       }
 
       setMapDescriptions(descriptions);
+
+      // Layers the backend couldn't get data for (the map itself carries a red
+      // "MAP DATA UNAVAILABLE" banner) — say so rather than show an empty map.
+      const mapWarnings: Record<string, string[]> = json?.map_warnings ?? {};
+      const warned = Object.values(mapWarnings).flat();
+      if (warned.length) {
+        Alert.alert(
+          "Some map data unavailable",
+          warned.join("\n\n") + "\n\nTry Prepare for site again later, or check the GSI map viewer.",
+        );
+      }
 
       // 2) Prefill desk-study fields from live GSI summaries
       await prefillFromLayerSummaries(lat, lon);
@@ -2885,7 +2729,7 @@ const TANK_TYPES = [
     trialHole: !!(trialDepth || thClassificationCol),
     subsurfacePerc: !!likelySubsurfaceP,
     surfacePerc: !!likelySurfaceP,
-    conclusion: !!(dischargeRoute || suitableForDevelopment || unsatDepth),
+    conclusion: !!(dischargeRoute || suitableForDevelopment || unsatDepth || slopeProposed),
     selectedDwwts: !!(dwwtsInstall || dwwtsDischargeTo),
     treatmentSystems: !!(packagedType || septTankCapacity),
     qualityAssurance: !!(qaInstall || qaMaintenance),
@@ -2943,6 +2787,7 @@ const TANK_TYPES = [
         aquiferCategory,
         aquiferCode,
         vulnerability,
+        vulnerabilityGsiLabel,
         gwBody,
         gwStatus,
         nearbySupply,
@@ -2993,6 +2838,7 @@ const TANK_TYPES = [
         thCompactnessCol,
         thColourCol,
         thFlowpathsCol,
+        soilLayers,
       },
       subsurfacePerc: {
         percHoles,
@@ -3049,7 +2895,7 @@ const TANK_TYPES = [
         siteSpecificConditions,
       },
       conclusion: {
-        slope,
+        slopeProposed,
         unsatDepth,
         sepDistancesMet,
         dischargeRoute,
@@ -3080,6 +2926,15 @@ const TANK_TYPES = [
     !!session // Only auto-save when user is logged in
   );
 
+  // Save / back on a section form: force-save whatever's still in the
+  // autosave debounce window *before* leaving, rather than relying on the
+  // 600ms timer landing afterwards — so Save saves every time, even if the
+  // app is closed straight after.
+  const saveAndCloseSection = async () => {
+    await flushAutoSave();
+    setCurrentSection(null);
+  };
+
   // Wait for the initial (local, offline-safe) session check before deciding
   // whether to show the app or the login screen — see `sessionChecked` above.
   if (!sessionChecked) {
@@ -3098,7 +2953,10 @@ const TANK_TYPES = [
 
 return (
   <SafeAreaView style={styles.container}>
-    <View style={styles.syncStatusOverlay} pointerEvents="box-none">
+    {/* In normal layout flow, not floated over the header — it used to be
+        absolutely positioned top-right, right on top of the Save button,
+        and swallowed taps meant for it. */}
+    <View style={styles.syncStatusRow}>
       <SyncStatusBar />
     </View>
     {/* My Reports view */}
@@ -3166,15 +3024,15 @@ return (
       <>
         <AppHeader
           title={SectionMeta[currentSection]?.label || 'Section'}
-          onBack={() => setCurrentSection(null)}
+          onBack={saveAndCloseSection}
           rightLabel="Save"
-          onRightPress={() => setCurrentSection(null)}
+          onRightPress={saveAndCloseSection}
         />
 
         <View style={{ flex: 1 }}>
         {/* Location, Maps & Photos (combined) */}
         {currentSection === 'photos' && (
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+          <KeyboardAwareScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
             <MapsTab
               embedded
               lat={lat}
@@ -3188,12 +3046,13 @@ return (
               generateMaps={generateMaps}
               getCurrentLocation={getCurrentLocation}
               deskStudyStatus={deskStudyStatus}
+              localMapUris={localMapUris}
             />
             <PhotosTab
               embedded
               reportId={currentReportId}
             />
-          </ScrollView>
+          </KeyboardAwareScrollView>
         )}
 
     {/* Show Client Info Tab */}
@@ -3239,6 +3098,7 @@ return (
         setAquiferCode={setAquiferCode}
         vulnerability={vulnerability}
         setVulnerability={setVulnerability}
+        vulnerabilityGsiLabel={vulnerabilityGsiLabel}
         gwBody={gwBody}
         setGwBody={setGwBody}
         gwStatus={gwStatus}
@@ -3253,6 +3113,8 @@ return (
         setSpaSO={setSpaSO}
         gwProtectionResponse={gwProtectionResponse}
         setGwProtectionResponse={setGwProtectionResponse}
+        gwprSuggested={gwprSuggestion.value}
+        gwprReason={gwprSuggestion.reason}
         significantSites={significantSites}
         setSignificantSites={setSignificantSites}
         pastExperience={pastExperience}
@@ -3342,6 +3204,8 @@ return (
         thColourCol={thColourCol}
         setThColourCol={setThColourCol}
         thFlowpathsCol={thFlowpathsCol}
+        soilLayers={soilLayers}
+        setSoilLayers={setSoilLayers}
         setThFlowpathsCol={setThFlowpathsCol}
         likelySubsurfaceP={likelySubsurfaceP}
         setLikelySubsurfaceP={setLikelySubsurfaceP}
@@ -3395,8 +3259,9 @@ return (
     {/* Show Conclusion Tab */}
     {currentTab === 'conclusion' && (
       <ConclusionTab
-        slope={slope}
-        setSlope={setSlope}
+        slopeProposed={slopeProposed}
+        setSlopeProposed={setSlopeProposed}
+        siteSlope={slope}
         sepDistancesMet={sepDistancesMet}
         setSepDistancesMet={setSepDistancesMet}
         unsatDepth={unsatDepth}
@@ -3578,8 +3443,9 @@ return (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Brand.bg },
-  syncStatusOverlay: {
-    position: 'absolute', top: 8, right: 12, zIndex: 50, alignItems: 'flex-end',
+  syncStatusRow: {
+    alignItems: 'flex-end', paddingHorizontal: 12, paddingTop: 4,
+    backgroundColor: Brand.surface,
   },
   headerPlus: {
     width: 34, height: 34, borderRadius: 17, backgroundColor: Brand.primary,

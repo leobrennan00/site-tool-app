@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { ScrollView, View, Text, Image, StyleSheet, Pressable } from "react-native";
+import { View, Text, Image, StyleSheet, Pressable } from "react-native";
 import GoogleDrivePicker from "../components/GoogleDrivePicker";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, PrimaryBtn } from "@/components/ui/kit";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { PrefixPicker } from "@/components/ui/PrefixPicker";
 
 interface SiteAssessorProps {
   assCompany: string; setAssCompany: (val: string) => void;
@@ -37,19 +39,17 @@ export default function SiteAssessorTab(props: SiteAssessorProps) {
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Card>
         <CardTitle>Assessor Details</CardTitle>
         <View style={{ gap: 14 }}>
           <FormInput label="Company" value={assCompany} onChangeText={setAssCompany} placeholder="Company name" />
+          <PrefixPicker value={assPrefix} onChange={setAssPrefix} />
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <FormInput label="Prefix" value={assPrefix} onChangeText={setAssPrefix} placeholder="Mr/Ms" />
-            </View>
-            <View style={{ flex: 2 }}>
               <FormInput label="First Name" value={assFirst} onChangeText={setAssFirst} placeholder="First name" />
             </View>
-            <View style={{ flex: 2 }}>
+            <View style={{ flex: 1 }}>
               <FormInput label="Surname" value={assSurname} onChangeText={setAssSurname} placeholder="Surname" />
             </View>
           </View>
@@ -116,7 +116,7 @@ export default function SiteAssessorTab(props: SiteAssessorProps) {
       </Card>
 
       <PrimaryBtn title="Generate Report" onPress={generateReport} style={{ marginTop: 4 }} />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -1,7 +1,8 @@
 import React from "react";
-import { ScrollView, View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup, CheckRow, InfoBanner } from "@/components/ui/kit";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 interface DeskStudyProps {
   soilType: string;
@@ -36,6 +37,12 @@ interface DeskStudyProps {
   setPastExperience: (val: string) => void;
   deskComments: string;
   setDeskComments: (val: string) => void;
+  /** GWPR the app derives from aquifer + vulnerability (+ SPA), or null if
+   *  it can't — and the one-line explanation either way. */
+  gwprSuggested?: string | null;
+  /** GSI category label at the site, e.g. "Extreme (X) – rock at or near surface or karst". */
+  vulnerabilityGsiLabel?: string;
+  gwprReason?: string;
 }
 
 export default function DeskStudyTab(props: DeskStudyProps) {
@@ -46,6 +53,7 @@ export default function DeskStudyTab(props: DeskStudyProps) {
     nearbySupply, setNearbySupply, spaZOC, setSpaZOC, spaSI, setSpaSI, spaSO, setSpaSO,
     gwProtectionResponse, setGwProtectionResponse, significantSites, setSignificantSites,
     pastExperience, setPastExperience, deskComments, setDeskComments,
+    gwprSuggested, gwprReason, vulnerabilityGsiLabel,
   } = props;
 
   const codeOptions =
@@ -55,7 +63,7 @@ export default function DeskStudyTab(props: DeskStudyProps) {
     : [];
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <InfoBanner>Auto-filled from the site GPS — please review each field.</InfoBanner>
 
       <Card>
@@ -106,6 +114,9 @@ export default function DeskStudyTab(props: DeskStudyProps) {
               { label: "Low", value: "Low" },
             ]}
           />
+          {vulnerabilityGsiLabel ? (
+            <Text style={styles.hint}>GSI map at site: {vulnerabilityGsiLabel}</Text>
+          ) : null}
         </View>
       </Card>
 
@@ -143,6 +154,12 @@ export default function DeskStudyTab(props: DeskStudyProps) {
               );
             })}
           </View>
+          {/* Never a silent blank: either how the value was derived, or a
+              clear prompt to pick one manually. Hidden once the assessor has
+              chosen a different value themselves, so it can't mislead. */}
+          {gwprReason && (!gwProtectionResponse || gwProtectionResponse === gwprSuggested) ? (
+            <Text style={gwprSuggested ? styles.hint : styles.hintWarn}>{gwprReason}</Text>
+          ) : null}
         </View>
       </Card>
 
@@ -154,7 +171,7 @@ export default function DeskStudyTab(props: DeskStudyProps) {
           <FormInput label="Desk Study Comments" value={deskComments} onChangeText={setDeskComments} placeholder="Optional notes…" multiline />
         </View>
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -168,4 +185,6 @@ const styles = StyleSheet.create({
   chipSelected: { borderColor: Brand.primary, backgroundColor: Brand.primaryTint },
   chipText: { fontSize: 13, color: Brand.text, fontFamily: Font.medium },
   chipTextSelected: { color: Brand.primaryDark, fontFamily: Font.semibold },
+  hint: { fontSize: 11, fontFamily: Font.regular, color: Brand.textMuted, marginTop: 8 },
+  hintWarn: { fontSize: 12, fontFamily: Font.semibold, color: Brand.amber, marginTop: 8 },
 });

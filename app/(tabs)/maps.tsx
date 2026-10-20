@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { ScrollView, View, Text, TextInput, Image, StyleSheet, Platform, Pressable, ActivityIndicator } from "react-native";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, PrimaryBtn, InfoBanner, ProgressBar } from "@/components/ui/kit";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
+import { mapKey, LocalMapIndex } from "@/lib/offlineMaps";
 
 const API_BASE = "http://192.168.1.35:8000";
 
@@ -18,13 +20,17 @@ interface MapsProps {
   getCurrentLocation: () => void;
   embedded?: boolean;
   deskStudyStatus?: 'none' | 'pending' | 'ready';
+  /** Remote map URL → copy saved on the device (see lib/offlineMaps.ts). */
+  localMapUris?: LocalMapIndex;
 }
 
 export default function MapsTab(props: MapsProps) {
   const {
     lat, setLat, lon, setLon, loading, imgErr, imgUris,
     mapDescriptions, generateMaps, getCurrentLocation, embedded, deskStudyStatus,
+    localMapUris,
   } = props;
+  const [zoomMap, setZoomMap] = useState<{ uri: string; title: string } | null>(null);
 
   const [eircode, setEircode] = useState("");
   const [eircodeErr, setEircodeErr] = useState<string | null>(null);
@@ -205,13 +211,22 @@ export default function MapsTab(props: MapsProps) {
           {imgUris.map((uri, idx) => {
             const title = getMapTitle(uri);
             const description = getMapDescription(uri);
-            const imageUri = uri.startsWith('http') ? uri : `${API_BASE}${uri}`;
+            const remoteUri = uri.startsWith('http') ? uri : `${API_BASE}${uri}`;
+            // Prefer the copy saved on the device so maps still show (and zoom) offline.
+            const imageUri = localMapUris?.[mapKey(uri)] ?? remoteUri;
             return (
               <View key={idx} style={styles.mapContainer}>
                 <Text style={styles.mapTitle}>{title}</Text>
-                <View style={styles.mapPreview}>
+                <Pressable
+                  onPress={() => setZoomMap({ uri: imageUri, title })}
+                  style={styles.mapPreview}
+                  accessibilityLabel={`Open ${title} full screen to zoom`}
+                >
                   <Image source={{ uri: imageUri }} style={styles.mapImage} resizeMode="contain" />
-                </View>
+                  <View style={styles.zoomBadge}>
+                    <Text style={styles.zoomBadgeText}>Tap to zoom</Text>
+                  </View>
+                </Pressable>
                 {description ? (
                   <View style={styles.descriptionBox}>
                     <Text style={styles.descriptionText}>{description}</Text>
@@ -222,6 +237,13 @@ export default function MapsTab(props: MapsProps) {
           })}
         </Card>
       )}
+
+      <ZoomableImageViewer
+        visible={!!zoomMap}
+        uri={zoomMap?.uri ?? null}
+        title={zoomMap?.title}
+        onClose={() => setZoomMap(null)}
+      />
     </>
   );
 
@@ -264,6 +286,11 @@ const styles = StyleSheet.create({
   mapTitle: { fontSize: 15, fontFamily: Font.semibold, color: Brand.text, marginBottom: 8 },
   mapPreview: { borderRadius: 12, overflow: "hidden", backgroundColor: Brand.bg, marginBottom: 10, borderWidth: 1, borderColor: Brand.borderLight },
   mapImage: { width: "100%", height: 200 },
+  zoomBadge: {
+    position: "absolute", right: 8, bottom: 8, backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+  },
+  zoomBadgeText: { color: "#fff", fontSize: 11, fontFamily: Font.semibold },
   descriptionBox: { backgroundColor: Brand.primaryTint, borderLeftWidth: 3, borderLeftColor: Brand.primary, padding: 12, borderRadius: 8 },
   descriptionText: { fontSize: 13, color: Brand.primaryDark, lineHeight: 18, fontFamily: Font.regular },
 });

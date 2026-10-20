@@ -1,8 +1,9 @@
 import React from "react";
-import { ScrollView, View, Platform } from "react-native";
+import { View, Platform } from "react-native";
 import { Brand } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup } from "@/components/ui/kit";
 import { DWWTS_INSTALL_OPTIONS } from "@/lib/designRules/epaCop2021";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 interface SelectedDwwtsProps {
   dwwtsInstall: string;
@@ -33,7 +34,7 @@ export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
   ];
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Card>
         <CardTitle>Propose to install</CardTitle>
         <RadioGroup
@@ -78,6 +79,6 @@ export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
           />
         </View>
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }

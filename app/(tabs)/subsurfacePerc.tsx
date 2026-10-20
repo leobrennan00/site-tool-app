@@ -1,7 +1,11 @@
 import React from "react";
-import { ScrollView, View, Text, TextInput, StyleSheet } from "react-native";
+import { View, Text, TextInput, StyleSheet } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
 import { Stopwatch } from "@/components/ui/Stopwatch";
+import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { TimeField } from "@/components/ui/TimeField";
+import { HoleCheck, OverallResultCard } from "@/components/ui/PercolationSummary";
+import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
 
 // Types
 type PercTestHole = {
@@ -81,18 +85,16 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
     stdHoles,
     setStdHoles,
     setStdField,
-    stdResult,
     step4Comments,
     setStep4Comments,
     modHoles,
     setModHoles,
     setModField,
-    modResult,
     TF_FACTORS,
   } = props;
 
   return (
-    <ScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
+    <KeyboardAwareScrollView style={{ backgroundColor: Brand.bg }} contentContainerStyle={styles.scroll}>
       <View style={styles.header}>
         <Text style={styles.title}>Subsurface Percolation Test</Text>
         <Text style={styles.subtitle}>
@@ -181,15 +183,14 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
             </View>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Pre-soak 1 Time</Text>
-              <TextInput
+              <TimeField
                 style={styles.input}
                 value={hole.preSoak1Time}
-                onChangeText={(v) => {
+                onChange={(v) => {
                   const copy = [...percHoles];
                   copy[idx].preSoak1Time = v;
                   setPercHoles(copy);
                 }}
-                placeholder="HH:mm"
               />
             </View>
           </View>
@@ -206,15 +207,14 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
             </View>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Pre-soak 2 Time</Text>
-              <TextInput
+              <TimeField
                 style={styles.input}
                 value={hole.preSoak2Time}
-                onChangeText={(v) => {
+                onChange={(v) => {
                   const copy = [...percHoles];
                   copy[idx].preSoak2Time = v;
                   setPercHoles(copy);
                 }}
-                placeholder="HH:mm"
               />
             </View>
           </View>
@@ -235,37 +235,36 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
           <View style={styles.dateRow}>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Time filled to 400 mm</Text>
-              <TextInput
+              <TimeField
                 style={styles.input}
                 value={hole.fillTime}
-                onChangeText={(v) => {
+                onChange={(v) => {
                   const copy = [...percHoles];
                   copy[idx].fillTime = v;
                   setPercHoles(copy);
                 }}
-                placeholder="HH:mm"
               />
             </View>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Time at 300 mm</Text>
-              <TextInput
+              <TimeField
                 style={styles.input}
                 value={hole.waterLevelTime}
-                onChangeText={(v) => {
+                onChange={(v) => {
                   const copy = [...percHoles];
                   copy[idx].waterLevelTime = v;
                   setPercHoles(copy);
                 }}
-                placeholder="HH:mm"
               />
             </View>
           </View>
 
           <View style={styles.resultBox}>
             <Text style={styles.resultText}>
-              T₁₀₀ (min): {hole.t100 && hole.t100.trim() !== "" ? hole.t100 : "—"}
+              T₁₀₀ (min): {t100Hole(hole.fillTime, hole.waterLevelTime).value ?? "—"}
             </Text>
           </View>
+          <HoleCheck result={t100Hole(hole.fillTime, hole.waterLevelTime)} />
         </View>
       ))}
 
@@ -284,20 +283,18 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               <View style={styles.dateRow}>
                 <View style={styles.dateCol}>
                   <Text style={styles.label}>Start Time (at 300 mm)</Text>
-                  <TextInput
+                  <TimeField
                     style={styles.input}
-                    placeholder="HH:mm"
                     value={fill.start}
-                    onChangeText={(v) => setStdField(hi, fi, "start", v)}
+                    onChange={(v) => setStdField(hi, fi, "start", v)}
                   />
                 </View>
                 <View style={styles.dateCol}>
                   <Text style={styles.label}>Finish Time (at 200 mm)</Text>
-                  <TextInput
+                  <TimeField
                     style={styles.input}
-                    placeholder="HH:mm"
                     value={fill.finish}
-                    onChangeText={(v) => setStdField(hi, fi, "finish", v)}
+                    onChange={(v) => setStdField(hi, fi, "finish", v)}
                   />
                 </View>
               </View>
@@ -321,14 +318,14 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               Average Δt / 4 (tₛ): {typeof hole.ts === "number" ? hole.ts.toFixed(2) : "—"} min/25 mm
             </Text>
           </View>
+          <HoleCheck result={standardHole(hole.fills)} />
         </View>
       ))}
 
-      <View style={styles.resultCard}>
-        <Text style={styles.resultTitle}>
-          Result of Test — Subsurface Percolation Value: {stdResult !== null ? stdResult.toFixed(2) : "—"} (min/25 mm)
-        </Text>
-      </View>
+      <OverallResultCard
+        title="Result of Test — Subsurface Percolation Value"
+        result={overallResult(stdHoles.map((h) => standardHole(h.fills)))}
+      />
 
       <View style={styles.card}>
         <Text style={styles.label}>Step 4 Comments</Text>
@@ -362,20 +359,18 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               <View style={styles.dateRow}>
                 <View style={styles.dateCol}>
                   <Text style={styles.label}>Start (hh:mm)</Text>
-                  <TextInput
+                  <TimeField
                     style={styles.input}
                     value={band.start}
-                    onChangeText={(v) => setModField(hi, bi, "start", v)}
-                    placeholder="HH:mm"
+                    onChange={(v) => setModField(hi, bi, "start", v)}
                   />
                 </View>
                 <View style={styles.dateCol}>
                   <Text style={styles.label}>Finish (hh:mm)</Text>
-                  <TextInput
+                  <TimeField
                     style={styles.input}
                     value={band.finish}
-                    onChangeText={(v) => setModField(hi, bi, "finish", v)}
-                    placeholder="HH:mm"
+                    onChange={(v) => setModField(hi, bi, "finish", v)}
                   />
                 </View>
               </View>
@@ -388,13 +383,13 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
 
               <View style={styles.calcBox}>
                 <Text style={styles.calcText}>
-                  Time of fall Tₙ: {typeof band.tn === "number" ? band.tn.toFixed(2) : "—"} min
+                  Time of fall Tₘ: {typeof band.tn === "number" ? band.tn.toFixed(2) : "—"} min
                 </Text>
                 <Text style={styles.calcText}>
-                  Kₜ = Tₙ / T_f: {typeof band.kt === "number" ? band.kt.toFixed(2) : "—"}
+                  K = T_f / Tₘ: {typeof band.kt === "number" ? band.kt.toFixed(3) : "—"}
                 </Text>
                 <Text style={styles.calcText}>
-                  T-Value (band) = 4.45 / Kₜ: {typeof band.tVal === "number" ? band.tVal.toFixed(2) : "—"}
+                  T-Value (band) = 4.45 / K: {typeof band.tVal === "number" ? band.tVal.toFixed(2) : "—"}
                 </Text>
               </View>
             </View>
@@ -405,6 +400,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               T-Value (Hole {hole.id}): {typeof hole.holeT === "number" ? hole.holeT.toFixed(2) : "—"} (min/25 mm)
             </Text>
           </View>
+          <HoleCheck result={modifiedHole(hole.bands)} />
 
           <View style={styles.row}>
             <Text style={styles.label}>Comments</Text>
@@ -424,12 +420,11 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
         </View>
       ))}
 
-      <View style={styles.resultCard}>
-        <Text style={styles.resultTitle}>
-          Result of Test — Subsurface Percolation Value: {modResult !== null ? modResult.toFixed(2) : "—"} (min/25 mm)
-        </Text>
-      </View>
-    </ScrollView>
+      <OverallResultCard
+        title="Result of Test — Subsurface Percolation Value"
+        result={overallResult(modHoles.map((h) => modifiedHole(h.bands)))}
+      />
+    </KeyboardAwareScrollView>
   );
 }
 

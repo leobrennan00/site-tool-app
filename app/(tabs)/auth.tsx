@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Alert, KeyboardAvoidingView, Platform, ScrollView,
+  View, Text, StyleSheet, Pressable, Alert, KeyboardAvoidingView, ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
@@ -53,8 +53,12 @@ export default function Auth() {
         </View>
       </LinearGradient>
 
+      {/* 'padding' on Android too: with edge-to-edge (app.json) the window no
+          longer resizes for the keyboard, so leaving it off let the keyboard
+          cover the email/password fields. This screen is full-screen from the
+          top, so no keyboardVerticalOffset is needed. */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.sheetWrap}
       >
         <ScrollView contentContainerStyle={styles.sheet} keyboardShouldPersistTaps="handled">
