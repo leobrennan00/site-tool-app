@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { Brand } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup } from "@/components/ui/kit";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { PrefixPicker } from "@/components/ui/PrefixPicker";
 
 interface ClientInfoProps {
   fileRef: string;
@@ -47,14 +48,14 @@ export default function ClientInfoTab(props: ClientInfoProps) {
 
       <Card>
         <CardTitle>Client Details</CardTitle>
+        <View style={{ marginBottom: 14 }}>
+          <PrefixPicker value={prefix} onChange={setPrefix} />
+        </View>
         <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
           <View style={{ flex: 1 }}>
-            <FormInput label="Prefix" value={prefix} onChangeText={setPrefix} placeholder="Mr/Ms/Dr" autoCapitalize="words" />
-          </View>
-          <View style={{ flex: 2 }}>
             <FormInput label="First Name" value={firstName} onChangeText={setFirstName} placeholder="John" autoCapitalize="words" />
           </View>
-          <View style={{ flex: 2 }}>
+          <View style={{ flex: 1 }}>
             <FormInput label="Surname" value={surname} onChangeText={setSurname} placeholder="O'Brien" autoCapitalize="words" />
           </View>
         </View>

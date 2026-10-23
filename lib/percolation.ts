@@ -158,3 +158,26 @@ export function overallResult(holes: { status: HoleStatus; value: number | null;
 
 /** Round to 2 dp for storing alongside the raw times (display / legacy fields). */
 export const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Above this T100 (minutes) the percolation value is >90: unsuitable. */
+export const T100_UNSUITABLE = 300;
+/** Up to this T100 the standard method applies; above it, the modified method. */
+export const T100_STANDARD_MAX = 210;
+
+/**
+ * Which percolation result to report, from the average T100 (EPA CoP form
+ * 3.3): T100 ≤ 210 → standard method; 210 < T100 ≤ 300 → modified method;
+ * T100 > 300 → value above 90 (reported as 91, unsuitable). With no T100
+ * entered, `fallbackToAny` returns whichever method has a result (subsurface
+ * historically did this); otherwise there is no value yet.
+ */
+export function pickPercolationValue(
+  avgT100: number | null,
+  standard: number | null,
+  modified: number | null,
+  fallbackToAny = false,
+): number | null {
+  if (avgT100 == null) return fallbackToAny ? (standard ?? modified ?? null) : null;
+  if (avgT100 > T100_UNSUITABLE) return 91;
+  return avgT100 <= T100_STANDARD_MAX ? standard : modified;
+}

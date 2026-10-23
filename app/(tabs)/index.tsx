@@ -31,8 +31,8 @@ import {
 } from "@/lib/designRules/dwwtsSizing";
 import { vulnerabilityFromGsi, vulnerabilityLabelFromGsi, deriveGwpr } from "@/lib/designRules/groundwater";
 import { cacheMapsLocally, getLocalMapIndex, LocalMapIndex } from "@/lib/offlineMaps";
-import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
-import { normalizePrefix } from "@/lib/names";
+import { standardHole, modifiedHole, t100Hole, overallResult, pickPercolationValue } from "@/lib/percolation";
+import { normalizePrefix, fullName } from "@/lib/names";
 import { SoilLayer, layerErrors, layersForPayload } from "@/lib/trialHole";
 import { startSyncEngine } from "../../lib/syncProcessor";
 import { markDeskStudyPending, markDeskStudyReady, getDeskStudyStatus, DeskStudyStatus } from "../../lib/deskStudyCache";
@@ -195,7 +195,25 @@ export default function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deskStudyStatus, lat, lon]);
 
+  // A report whose desk study is "pending" (left offline, or its Prepare for
+  // site was interrupted by opening another report) fetches it when it is
+  // opened while online — once per report per session, so a failing server
+  // can't cause a retry loop.
+  const autoDeskStudyTriedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!currentReportId || deskStudyStatus !== 'pending' || !lat || !lon || (loading && generatingKey === currentReportId)) return;
+    if (!isOnline() || autoDeskStudyTriedRef.current.has(currentReportId)) return;
+    autoDeskStudyTriedRef.current.add(currentReportId);
+    generateMaps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentReportId, deskStudyStatus, lat, lon]);
+
   const [loading, setLoading] = useState(false);
+  // Which report the running "Prepare for site" belongs to ("" = unsaved new
+  // report). `loading` used to be global, so opening another report while one
+  // was generating showed that report as generating too.
+  const [generatingKey, setGeneratingKey] = useState<string | null>(null);
+  const generationTokenRef = useRef(0);
   const [imgErr, setImgErr] = useState<string | null>(null);
   const [siteLocation, setSiteLocation] = useState("");
   const [clientName, setClientName] = useState("");
@@ -506,20 +524,25 @@ const TANK_TYPES = [
     }
   }
 
-  async function prefillFromLayerSummaries(currentLat: string, currentLon: string) {
+  async function prefillFromLayerSummaries(currentLat: string, currentLon: string, alreadyFetched?: any) {
     try {
-      const url = `${API_BASE}/layer_summaries?lat=${encodeURIComponent(
-        currentLat
-      )}&lon=${encodeURIComponent(currentLon)}`;
+      // /generate_maps already returns the same summaries; only fetch them
+      // separately if we weren't given any (one less request to fail).
+      let summaries: any = alreadyFetched && Object.keys(alreadyFetched).length ? alreadyFetched : null;
+      if (!summaries) {
+        const url = `${API_BASE}/layer_summaries?lat=${encodeURIComponent(
+          currentLat
+        )}&lon=${encodeURIComponent(currentLon)}`;
 
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.warn("layer_summaries failed with status", res.status);
-        return;
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn("layer_summaries failed with status", res.status);
+          return;
+        }
+
+        const json = await res.json();
+        summaries = (json && (json as any).summaries) || {};
       }
-
-      const json = await res.json();
-      const summaries = (json && (json as any).summaries) || {};
 
       // --- Soils ---
       const soils = summaries.soils;
@@ -589,8 +612,12 @@ const TANK_TYPES = [
 
       // --- Groundwater Body ---
       const gwb = summaries.groundwater_body;
-      if (gwb && typeof gwb.description === "string" && !gwBody) {
-        setGwBody(gwb.description);
+      if (gwb && !gwBody) {
+        // One line, as on the EPA form: "Tulla-Newmarket on Fergus IE_SH_G_229"
+        // (the description is the map caption, with a "Status:" line).
+        const oneLine = [gwb.name, gwb.code].filter(Boolean).join(" ").trim();
+        if (oneLine) setGwBody(oneLine);
+        else if (typeof gwb.description === "string") setGwBody(gwb.description.split("\n")[0].replace(/^Groundwater Body:\s*/i, ""));
       }
 
       // --- Groundwater Body Status ---
@@ -664,19 +691,14 @@ const TANK_TYPES = [
 
 
   // --- derived percolation values (choose Step 4 vs Step 5) ---
-  const pickSurfacePV = () => {
-    if (surfAvgT100 == null) return null;
-    if (surfAvgT100 > 300) return 91;            // >90 ⇒ unsuitable
-    if (surfAvgT100 <= 210) return surfStdResult ?? null;
-    return surfModResult ?? null;
-  };
-
+  // T100 ≤ 210 → standard method, 210–300 → modified, > 300 → unsuitable
+  // (lib/percolation.ts). Subsurface now follows the same rule; it used to
+  // just take whichever method had a result. Until a T100 is entered it still
+  // falls back to whichever method has one.
+  const pickSurfacePV = () => pickPercolationValue(surfAvgT100, surfStdResult, surfModResult);
   const pickSubsurfacePV = () => {
-    // If you have a subsurface T100 average var, use the same branching.
-    // Fallback: whichever result you actually filled.
-    if (stdResult != null) return stdResult;
-    if (modResult != null) return modResult;
-    return null;
+    const avgT100 = overallResult(percHoles.map(h => t100Hole(h.fillTime, h.waterLevelTime))).value;
+    return pickPercolationValue(avgT100, stdResult, modResult, true);
   };
 
   // --- 4.0 state you already had ---
@@ -1164,7 +1186,7 @@ const TANK_TYPES = [
   }, [
     // deps that may change upstream
     surfAvgT100, surfStdResult, surfModResult,
-    stdResult, modResult,
+    stdResult, modResult, percHoles,
     unsatDepth, sepDistancesMet, dischargeRoute,
     cDirty,
   ]);
@@ -1645,7 +1667,7 @@ const TANK_TYPES = [
           lat: Number((lat || "").toString().trim()),
           lon: Number((lon || "").toString().trim()),
           fileRef: (fileRef || "").trim(),
-          prefix: (prefix || "").trim(),
+          prefix: normalizePrefix(prefix),   // a title or nothing, never a name typed into the box
           firstName: (firstName || "").trim(),
           surname: (surname || "").trim(),
           address: (address || "").trim(),
@@ -2598,6 +2620,11 @@ const TANK_TYPES = [
     }
 
     setImgErr(null);
+    const myKey = currentReportId ?? "";
+    const myLat = lat, myLon = lon;
+    const myToken = ++generationTokenRef.current;
+    const stillOpen = () => (openReportIdRef.current ?? "") === myKey;
+    setGeneratingKey(myKey);
     setLoading(true);
     try {
       // Get current user ID for organizing uploaded maps
@@ -2618,6 +2645,21 @@ const TANK_TYPES = [
         clearTimeout(mapsTimer);
       }
       const json = await res.json();
+      // A server error used to leave the maps area silently empty.
+      if (!res.ok || !Array.isArray(json?.maps)) {
+        throw new Error(json?.detail ? `Map generation failed: ${json.detail}` : `Map generation failed (HTTP ${res.status})`);
+      }
+      // The engineer opened a different report while this was running: don't
+      // pour these maps and desk-study answers into that other report's form.
+      // Mark the original "pending" instead, so its desk study is fetched
+      // again automatically the next time it's opened (see the effect above).
+      if (!stillOpen()) {
+        if (myKey) {
+          autoDeskStudyTriedRef.current.delete(myKey);
+          await markDeskStudyPending(myKey, myLat, myLon);
+        }
+        return;
+      }
 
       const cacheBust = Date.now();
       const uris = (json?.maps ?? []).map(
@@ -2671,18 +2713,23 @@ const TANK_TYPES = [
       }
 
       // 2) Prefill desk-study fields from live GSI summaries
-      await prefillFromLayerSummaries(lat, lon);
+      await prefillFromLayerSummaries(lat, lon, summaries);
 
       if (currentReportId) {
         await markDeskStudyReady(currentReportId, lat, lon);
         setDeskStudyStatus('ready');
       }
     } catch (e: any) {
-      setImgErr(String(e?.message ?? e));
-      setImgUris([]);
-      setMapDescriptions({});
+      if (stillOpen()) {
+        setImgErr(String(e?.message ?? e));
+        setImgUris([]);
+        setMapDescriptions({});
+      }
     } finally {
-      setLoading(false);
+      if (generationTokenRef.current === myToken) {
+        setLoading(false);
+        setGeneratingKey(null);
+      }
     }
   }
 
@@ -3008,7 +3055,7 @@ return (
         <ReportOverview
           siteName={(firstName || surname) ? `${firstName} ${surname}`.trim() : (siteLocation || 'Untitled Report')}
           location={siteLocation}
-          clientName={`${prefix} ${firstName} ${surname}`.replace(/\s+/g, ' ').trim()}
+          clientName={fullName(prefix, firstName, surname)}
           fileRef={fileRef}
           status={currentReportStatus}
           sectionsComplete={sectionsComplete}
@@ -3039,7 +3086,7 @@ return (
               setLat={setLat}
               lon={lon}
               setLon={setLon}
-              loading={loading}
+              loading={loading && generatingKey === (currentReportId ?? "")}
               imgErr={imgErr}
               imgUris={imgUris}
               mapDescriptions={mapDescriptions}

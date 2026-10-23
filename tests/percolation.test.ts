@@ -59,3 +59,16 @@ test('T100 hole', () => {
   assert.equal(t100Hole('10:00', '').status, 'incomplete');
   assert.equal(t100Hole('', '').status, 'empty');
 });
+
+import { pickPercolationValue } from '../lib/percolation.ts';
+
+test('percolation value follows the T100 bands', () => {
+  assert.equal(pickPercolationValue(150, 20, 40), 20);        // ≤ 210 → standard
+  assert.equal(pickPercolationValue(210, 20, 40), 20);
+  assert.equal(pickPercolationValue(250, 20, 40), 40);        // 210–300 → modified
+  assert.equal(pickPercolationValue(301, 20, 40), 91);        // > 300 → unsuitable
+  assert.equal(pickPercolationValue(250, 20, null), null);    // modified method not done yet
+  assert.equal(pickPercolationValue(null, 20, 40), null);     // no T100, strict
+  assert.equal(pickPercolationValue(null, 20, 40, true), 20); // no T100, fall back
+  assert.equal(pickPercolationValue(null, null, 40, true), 40);
+});
