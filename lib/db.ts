@@ -94,4 +94,11 @@ async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
       occurred_at TEXT NOT NULL
     );
   `);
+
+  // Added after the first release: what each photo shows (see lib/photoLabels.ts).
+  // Existing photos keep NULL, which reads as "Other".
+  const photoCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(photos)`);
+  if (!photoCols.some((c) => c.name === 'label')) {
+    await db.execAsync(`ALTER TABLE photos ADD COLUMN label TEXT;`);
+  }
 }

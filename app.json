@@ -60,7 +60,14 @@
         }
       ],
       "expo-web-browser",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Site Report needs access to your photos to add site photos to a report.",
+          "cameraPermission": "Site Report uses the camera to take site photos for a report."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

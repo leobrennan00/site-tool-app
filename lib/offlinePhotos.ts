@@ -8,6 +8,8 @@ import { getDb } from './db';
 import { enqueue } from './syncQueue';
 import { uploadPhoto, uploadFile } from './storage';
 import { saveReportSections } from './offlineReports';
+import { notifyLocalChange } from './syncQueue';
+import { normalizePhotoLabel, PhotoLabel } from './photoLabels';
 
 // Local-first photo capture: the full image + its GPS/timestamp is written
 // to the device immediately (survives app close / phone dying), and the
@@ -23,6 +25,8 @@ export interface LocalPhoto {
   longitude: number | null;
   taken_at: string;
   kind: 'photo' | 'signature';
+  /** What the photo shows (lib/photoLabels.ts); null on photos taken before labels existed. */
+  label: string | null;
   uploaded: number;
   deleted: number;
   created_at: string;
@@ -57,7 +61,8 @@ async function captureGps(): Promise<{ lat: number | null; lon: number | null }>
 export async function capturePhotoOffline(
   reportId: string,
   pickerUri: string,
-  kind: 'photo' | 'signature' = 'photo'
+  kind: 'photo' | 'signature' = 'photo',
+  opts: { label?: PhotoLabel | null; takenAt?: string | null } = {}
 ): Promise<LocalPhoto> {
   await ensurePhotosDir();
   const db = await getDb();
@@ -69,20 +74,23 @@ export async function capturePhotoOffline(
   // URI expo-image-picker hands back is not guaranteed to survive.
   await FileSystem.copyAsync({ from: pickerUri, to: destUri });
 
-  const takenAt = new Date().toISOString();
+  // The moment the photo was taken (EXIF, when the picker passes it on), not
+  // the moment it was added to the report.
+  const takenAt = opts.takenAt || new Date().toISOString();
+  const createdAt = new Date().toISOString();
   const { lat, lon } = await captureGps();
 
   await db.runAsync(
-    `INSERT INTO photos (id, report_id, local_uri, remote_url, latitude, longitude, taken_at, kind, uploaded, deleted, created_at)
-     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 0, 0, ?)`,
-    [id, reportId, destUri, lat, lon, takenAt, kind, takenAt]
+    `INSERT INTO photos (id, report_id, local_uri, remote_url, latitude, longitude, taken_at, kind, label, uploaded, deleted, created_at)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 0, 0, ?)`,
+    [id, reportId, destUri, lat, lon, takenAt, kind, opts.label ?? null, createdAt]
   );
 
   await enqueue('photo_upload', { photoId: id }, reportId);
 
   return {
     id, report_id: reportId, local_uri: destUri, remote_url: null,
-    latitude: lat, longitude: lon, taken_at: takenAt, kind, uploaded: 0, deleted: 0, created_at: takenAt,
+    latitude: lat, longitude: lon, taken_at: takenAt, kind, label: opts.label ?? null, uploaded: 0, deleted: 0, created_at: createdAt,
   };
 }
 
@@ -107,6 +115,30 @@ export async function getUploadedPhotoUrls(
     [reportId, kind]
   );
   return rows.map((r) => r.remote_url);
+}
+
+export interface PhotoEntry {
+  url: string;
+  label: PhotoLabel;
+  taken_at: string;
+}
+
+/** Uploaded photos with what they show and when they were taken — the shape the
+ *  report generator wants (site-tool-backend/report_layout.py: normalise_photos). */
+export async function getUploadedPhotoEntries(reportId: string): Promise<PhotoEntry[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ remote_url: string; label: string | null; taken_at: string }>(
+    `SELECT remote_url, label, taken_at FROM photos WHERE report_id = ? AND kind = 'photo' AND deleted = 0 AND uploaded = 1 ORDER BY created_at ASC`,
+    [reportId]
+  );
+  return rows.map((r) => ({ url: r.remote_url, label: normalizePhotoLabel(r.label), taken_at: r.taken_at }));
+}
+
+/** Change what a photo shows (works offline — it's only metadata). */
+export async function setPhotoLabel(photoId: string, label: PhotoLabel): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`UPDATE photos SET label = ? WHERE id = ?`, [label, photoId]);
+  notifyLocalChange();
 }
 
 export async function getPendingPhotoCount(reportId?: string): Promise<number> {

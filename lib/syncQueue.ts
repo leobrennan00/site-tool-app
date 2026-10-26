@@ -31,6 +31,8 @@ const listeners = new Set<() => void>();
 function notifyChanged() {
   listeners.forEach((cb) => cb());
 }
+/** For local changes that other screens should pick up (e.g. a photo being re-labelled). */
+export const notifyLocalChange = notifyChanged;
 export function subscribeQueueChanged(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);

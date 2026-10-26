@@ -11,12 +11,14 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Location from "expo-location";
 import { supabase } from "../../lib/supabase";
 import { Session } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+const ASSESSOR_DEFAULTS_CACHE = "assessor_defaults_v1";
 import Auth from "./auth";
 import { createReport, Report } from "../../lib/reports";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { isOnline, subscribeOnline } from "../../lib/network";
 import { enqueue, subscribeQueueChanged } from "../../lib/syncQueue";
-import { getUploadedPhotoUrls } from "../../lib/offlinePhotos";
+import { getUploadedPhotoUrls, getUploadedPhotoEntries, PhotoEntry } from "../../lib/offlinePhotos";
 import { SyncStatusBar } from "@/components/ui/SyncStatusBar";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import {
@@ -164,12 +166,18 @@ export default function Index() {
   // actually download. It's refreshed whenever the open report changes or
   // a photo finishes uploading in the background.
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  // The same photos with what each shows and when it was taken (lib/photoLabels.ts);
+  // this is what the report generator lays out, so re-labelling a photo refreshes it.
+  const [photoEntries, setPhotoEntries] = useState<PhotoEntry[]>([]);
   useEffect(() => {
     let cancelled = false;
     const refreshPhotoUrls = () => {
-      if (!currentReportId) { setPhotoUrls([]); return; }
+      if (!currentReportId) { setPhotoUrls([]); setPhotoEntries([]); return; }
       getUploadedPhotoUrls(currentReportId).then((urls) => {
         if (!cancelled) setPhotoUrls(urls);
+      });
+      getUploadedPhotoEntries(currentReportId).then((entries) => {
+        if (!cancelled) setPhotoEntries(entries);
       });
     };
     refreshPhotoUrls();
@@ -2091,12 +2099,16 @@ const TANK_TYPES = [
             email: (assEmail || "").trim(),
             indemnity_insurance_number: (assIndemnity || "").trim(),
             signature_url: signatureUrl || "",
+            // The user's logo (Settings): top right of the cover and top left of every page.
+            logo_url: assessorDefaults?.logoUrl || "",
           },
 
 
 
           maps: (imgUris || []).slice(0, 10),
-          photos: photoUrls,
+          // Photos with their labels; when none are labelled yet the generator treats
+          // them all as "Other". Falls back to the plain URLs if the entries haven't loaded.
+          photos: photoEntries.length ? photoEntries : photoUrls,
           plans: planPdfUrls,
       };
 
@@ -2363,9 +2375,19 @@ const TANK_TYPES = [
 
       if (!error && data?.assessor_defaults) {
         setAssessorDefaults(data.assessor_defaults);
+        AsyncStorage.setItem(ASSESSOR_DEFAULTS_CACHE, JSON.stringify(data.assessor_defaults)).catch(() => {});
+        return;
       }
+      throw error ?? new Error('no assessor defaults');
     } catch (err) {
-      console.error('Failed to load assessor defaults:', err);
+      // Offline (or the profile couldn't be read): use the copy from the last
+      // time it loaded, so a report generated with no signal still carries the
+      // user's logo and details.
+      try {
+        const cached = await AsyncStorage.getItem(ASSESSOR_DEFAULTS_CACHE);
+        if (cached) setAssessorDefaults(JSON.parse(cached));
+      } catch {}
+      console.warn('Using cached assessor defaults:', err);
     }
   }
 
@@ -3039,7 +3061,10 @@ return (
         <View style={{ flex: 1 }}>
           <SettingsTab
             onClose={() => setMainView('myReports')}
-            onSave={(defaults) => setAssessorDefaults(defaults)}
+            onSave={(defaults) => {
+              setAssessorDefaults(defaults);
+              AsyncStorage.setItem(ASSESSOR_DEFAULTS_CACHE, JSON.stringify(defaults)).catch(() => {});
+            }}
           />
         </View>
       </>

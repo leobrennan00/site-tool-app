@@ -25,6 +25,8 @@ export interface AssessorDefaults {
   email: string;
   indemnity: string;
   signatureUrl?: string;
+  /** Shown on the report cover and page headers. */
+  logoUrl?: string;
 }
 
 export default function SettingsTab(props: SettingsProps) {
@@ -40,6 +42,7 @@ export default function SettingsTab(props: SettingsProps) {
   const [email, setEmail] = useState('');
   const [indemnity, setIndemnity] = useState('');
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -68,6 +71,7 @@ export default function SettingsTab(props: SettingsProps) {
         setEmail(d.email || '');
         setIndemnity(d.indemnity || '');
         setSignatureUrl(d.signatureUrl || null);
+        setLogoUrl(d.logoUrl || null);
       }
     } catch (err) {
       console.error('Error loading settings:', err);
@@ -113,6 +117,42 @@ export default function SettingsTab(props: SettingsProps) {
     }
   }
 
+  // Same pattern as the signature: needs a connection to upload. Kept as PNG/JPEG
+  // as picked (no cropping) so a transparent logo stays transparent.
+  async function pickAndUploadLogo() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { Alert.alert('Error', 'Not authenticated'); return; }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      const isPng = /\.png$/i.test(asset.uri) || asset.mimeType === 'image/png';
+      const filePath = `logos/logo_${user.id}_${Date.now()}.${isPng ? 'png' : 'jpg'}`;
+
+      const blob = await (await fetch(asset.uri)).blob();
+      const { error: uploadError } = await supabase.storage
+        .from('report-assets')
+        .upload(filePath, blob, { contentType: isPng ? 'image/png' : 'image/jpeg', upsert: true });
+      if (uploadError) {
+        console.error('Logo upload error:', uploadError);
+        Alert.alert('Error', 'Failed to upload logo. Logos need a connection to upload.');
+        return;
+      }
+      const { data: urlData } = supabase.storage.from('report-assets').getPublicUrl(filePath);
+      setLogoUrl(urlData.publicUrl);
+      Alert.alert('Logo uploaded', 'Tap Save Profile to use it on your reports.');
+    } catch (err) {
+      console.error('Error uploading logo:', err);
+      Alert.alert('Error', 'Failed to upload logo. Logos need a connection to upload.');
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -123,6 +163,7 @@ export default function SettingsTab(props: SettingsProps) {
         company, prefix, firstName, surname, address,
         qualifications, phone, email, indemnity,
         signatureUrl: signatureUrl || undefined,
+        logoUrl: logoUrl || undefined,
       };
 
       const { error } = await supabase.from('profiles').update({ assessor_defaults: defaults }).eq('id', user.id);
@@ -194,6 +235,22 @@ export default function SettingsTab(props: SettingsProps) {
       </Card>
 
       <Card>
+        <CardTitle>Company Logo</CardTitle>
+        <Text style={styles.hint}>Printed on the top right of your report cover and the top left of every page.</Text>
+        <Pressable style={styles.sigBtn} onPress={pickAndUploadLogo}>
+          <Text style={styles.sigBtnText}>{logoUrl ? 'Change Logo' : 'Upload Logo'}</Text>
+        </Pressable>
+        {logoUrl ? (
+          <View style={styles.sigPreview}>
+            <Image source={{ uri: logoUrl }} style={styles.sigImage} resizeMode="contain" />
+            <Pressable onPress={() => setLogoUrl(null)} style={styles.logoRemove} accessibilityLabel="Remove logo">
+              <Text style={styles.logoRemoveText}>Remove logo</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </Card>
+
+      <Card>
         <CardTitle>Default E-Signature</CardTitle>
         <Text style={styles.hint}>Automatically included in new reports.</Text>
         <Pressable style={styles.sigBtn} onPress={pickAndUploadSignature}>
@@ -232,6 +289,8 @@ const styles = StyleSheet.create({
   sigBtnText: { color: Brand.primary, fontFamily: Font.semibold, fontSize: 15 },
   sigPreview: { marginTop: 12, borderWidth: 1, borderColor: Brand.borderLight, borderRadius: 12, padding: 12, backgroundColor: Brand.bg, alignItems: 'center' },
   sigImage: { width: 200, height: 90 },
+  logoRemove: { minHeight: 44, justifyContent: 'center', marginTop: 4 },
+  logoRemoveText: { color: Brand.danger, fontFamily: Font.semibold, fontSize: 14 },
   signOutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: Brand.dangerTint, borderWidth: 1.5, borderColor: Brand.danger,
