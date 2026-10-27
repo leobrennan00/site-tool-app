@@ -8,6 +8,8 @@ import { IcoSignOut } from '@/components/ui/icons';
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { PrefixPicker } from "@/components/ui/PrefixPicker";
 import { fullName as formatFullName } from "@/lib/names";
+import { uploadFile } from "../../lib/storage";
+import { isOnline } from "../../lib/network";
 
 interface SettingsProps {
   onClose: () => void;
@@ -80,76 +82,45 @@ export default function SettingsTab(props: SettingsProps) {
     }
   }
 
+  // Signature and logo upload the same way site photos do (lib/storage.ts:
+  // the site-reports bucket, the user's own folder, the file read off the phone
+  // as bytes). They used a separate bucket and fetch().blob(), which doesn't
+  // upload reliably in React Native, so the upload failed. Both need signal.
+  async function pickAndUploadImage(kind: 'signature' | 'logo'): Promise<string | null> {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // the signature is cropped; the logo is kept whole so a transparent PNG stays transparent
+      allowsEditing: kind === 'signature',
+      quality: kind === 'signature' ? 0.8 : 1,
+    });
+    if (result.canceled) return null;
+    const { url, error } = await uploadFile(result.assets[0].uri, 'site-reports', kind === 'logo' ? 'logos' : 'signatures');
+    if (error || !url) {
+      console.error(`${kind} upload error:`, error);
+      Alert.alert(
+        'Upload failed',
+        !isOnline()
+          ? 'You are offline. Upload it again once you have signal.'
+          : `Could not upload the ${kind}${error?.message ? `: ${error.message}` : '.'}`,
+      );
+      return null;
+    }
+    return url;
+  }
+
   async function pickAndUploadSignature() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { Alert.alert('Error', 'Not authenticated'); return; }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-      if (result.canceled) return;
-
-      const uri = result.assets[0].uri;
-      const fileName = `signature_${user.id}_${Date.now()}.jpg`;
-      const filePath = `signatures/${fileName}`;
-
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const { error: uploadError } = await supabase.storage
-        .from('report-assets')
-        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        Alert.alert('Error', 'Failed to upload signature');
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from('report-assets').getPublicUrl(filePath);
-      setSignatureUrl(urlData.publicUrl);
-      Alert.alert('Success', 'Signature uploaded');
-    } catch (err) {
-      console.error('Error uploading signature:', err);
-      Alert.alert('Error', 'Failed to upload signature');
+    const url = await pickAndUploadImage('signature');
+    if (url) {
+      setSignatureUrl(url);
+      Alert.alert('Signature uploaded', 'Tap Save Profile to use it on new reports.');
     }
   }
 
-  // Same pattern as the signature: needs a connection to upload. Kept as PNG/JPEG
-  // as picked (no cropping) so a transparent logo stays transparent.
   async function pickAndUploadLogo() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { Alert.alert('Error', 'Not authenticated'); return; }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 1,
-      });
-      if (result.canceled) return;
-
-      const asset = result.assets[0];
-      const isPng = /\.png$/i.test(asset.uri) || asset.mimeType === 'image/png';
-      const filePath = `logos/logo_${user.id}_${Date.now()}.${isPng ? 'png' : 'jpg'}`;
-
-      const blob = await (await fetch(asset.uri)).blob();
-      const { error: uploadError } = await supabase.storage
-        .from('report-assets')
-        .upload(filePath, blob, { contentType: isPng ? 'image/png' : 'image/jpeg', upsert: true });
-      if (uploadError) {
-        console.error('Logo upload error:', uploadError);
-        Alert.alert('Error', 'Failed to upload logo. Logos need a connection to upload.');
-        return;
-      }
-      const { data: urlData } = supabase.storage.from('report-assets').getPublicUrl(filePath);
-      setLogoUrl(urlData.publicUrl);
+    const url = await pickAndUploadImage('logo');
+    if (url) {
+      setLogoUrl(url);
       Alert.alert('Logo uploaded', 'Tap Save Profile to use it on your reports.');
-    } catch (err) {
-      console.error('Error uploading logo:', err);
-      Alert.alert('Error', 'Failed to upload logo. Logos need a connection to upload.');
     }
   }
 

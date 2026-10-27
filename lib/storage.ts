@@ -125,6 +125,7 @@ function getContentType(extension: string): string {
     'png': 'image/png',
     'gif': 'image/gif',
     'webp': 'image/webp',
+    'heic': 'image/heic',
     'pdf': 'application/pdf',
     'json': 'application/json',
   };
