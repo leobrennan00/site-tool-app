@@ -4,6 +4,7 @@ import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, CheckRow } from "@/components/ui/kit";
 import { SLOPE_OPTIONS } from "@/lib/designRules/epaCop2021";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { SuggestionNote } from "@/components/ui/SuggestionNote";
 
 interface VisualAssessmentProps {
   landscapePosition: string; setLandscapePosition: (v: string) => void;
@@ -27,6 +28,7 @@ interface VisualAssessmentProps {
   springs: string; setSprings: (v: string) => void;
   wellsText: string; setWellsText: (v: string) => void;
   visualComments: string; setVisualComments: (v: string) => void;
+  visualCommentsSuggestion?: string | null;
 }
 
 export default function VisualAssessmentTab(props: VisualAssessmentProps) {
@@ -37,7 +39,7 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
     roads, setRoads, outcrops, setOutcrops, ponding, setPonding, lakes, setLakes,
     beachesShellfish, setBeachesShellfish, wetlands, setWetlands, karstFeatures, setKarstFeatures,
     watercourses, setWatercourses, drainageDitches, setDrainageDitches, springs, setSprings,
-    wellsText, setWellsText, visualComments, setVisualComments,
+    wellsText, setWellsText, visualComments, setVisualComments, visualCommentsSuggestion,
   } = props;
 
   const slopeOpt = (val: string, label: string) => (
@@ -102,6 +104,8 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
           placeholder="Integrate observations: suitability, targets at risk, separation distances, proposed system location, etc."
           multiline
         />
+        <SuggestionNote value={visualComments} suggestion={visualCommentsSuggestion ?? null} onUse={setVisualComments} />
+        <Text style={styles.note}>Add anything particular to this site (nearby wells, rivers, rushes) to the standard wording.</Text>
       </Card>
     </KeyboardAwareScrollView>
   );

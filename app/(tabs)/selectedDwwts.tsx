@@ -1,9 +1,10 @@
 import React from "react";
-import { View, Platform } from "react-native";
-import { Brand } from "@/constants/theme";
+import { View, Text, Platform, StyleSheet } from "react-native";
+import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup } from "@/components/ui/kit";
 import { DWWTS_INSTALL_OPTIONS } from "@/lib/designRules/epaCop2021";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
+import { SuggestionNote } from "@/components/ui/SuggestionNote";
 
 interface SelectedDwwtsProps {
   dwwtsInstall: string;
@@ -18,14 +19,24 @@ interface SelectedDwwtsProps {
    *  suggestion came from (or why there isn't one yet) — see
    *  lib/designRules/dwwtsSizing.ts. */
   siteSpecificConditionsHint?: string;
+  /** Standard wording for the chosen system (lib/designRules/paragraphs.ts). */
+  siteSpecificConditionsSuggestion?: string | null;
+  /** Secondary system: gravity percolation trenches or a pumped soil polishing filter. */
+  polishingConstruction?: "trenches" | "filter" | null;
+  setPolishingConstruction?: (v: "trenches" | "filter") => void;
+  constructionSuggestion?: { value: "trenches" | "filter"; reason: string } | null;
+  treatmentUnit?: string;
+  setTreatmentUnit?: (v: string) => void;
 }
 
 export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
   const {
     dwwtsInstall, setDwwtsInstall, dwwtsDischargeTo, setDwwtsDischargeTo,
     invertLevel, setInvertLevel, siteSpecificConditions, setSiteSpecificConditions,
-    siteSpecificConditionsHint,
+    siteSpecificConditionsHint, siteSpecificConditionsSuggestion,
+    polishingConstruction, setPolishingConstruction, constructionSuggestion, treatmentUnit, setTreatmentUnit,
   } = props;
+  const isSecondary = dwwtsInstall === DWWTS_INSTALL_OPTIONS.secondaryAndPolishingFilter;
 
   const installOptions = [
     DWWTS_INSTALL_OPTIONS.septicTank,
@@ -42,6 +53,27 @@ export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
           onChange={(v) => setDwwtsInstall(v)}
           options={installOptions.map((o) => ({ label: o, value: o }))}
         />
+        {isSecondary && setPolishingConstruction ? (
+          <View style={{ marginTop: 14 }}>
+            <RadioGroup
+              label="Polishing filter built as"
+              value={polishingConstruction ?? constructionSuggestion?.value ?? null}
+              onChange={(v) => setPolishingConstruction(v)}
+              options={[
+                { label: "Gravity percolation trenches", value: "trenches" },
+                { label: "Pumped soil polishing filter", value: "filter" },
+              ]}
+            />
+            {!polishingConstruction && constructionSuggestion ? (
+              <Text style={styles.hint}>{constructionSuggestion.reason}</Text>
+            ) : null}
+          </View>
+        ) : null}
+        {dwwtsInstall && dwwtsInstall !== DWWTS_INSTALL_OPTIONS.septicTank && setTreatmentUnit ? (
+          <View style={{ marginTop: 14 }}>
+            <FormInput label="Treatment unit type" value={treatmentUnit ?? ""} onChangeText={setTreatmentUnit} placeholder="e.g. BAF" />
+          </View>
+        ) : null}
       </Card>
 
       <Card>
@@ -75,10 +107,15 @@ export default function SelectedDwwtsTab(props: SelectedDwwtsProps) {
             onChangeText={setSiteSpecificConditions}
             multiline
             placeholder="Special works, site improvement works, testing, etc."
-            hint={siteSpecificConditionsHint}
           />
+          <SuggestionNote value={siteSpecificConditions} suggestion={siteSpecificConditionsSuggestion ?? null}
+            onUse={setSiteSpecificConditions} missing={siteSpecificConditionsHint} />
         </View>
       </Card>
     </KeyboardAwareScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  hint: { fontSize: 12, fontFamily: Font.regular, color: Brand.textMuted, marginTop: 6 },
+});

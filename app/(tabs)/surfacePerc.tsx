@@ -4,6 +4,7 @@ import { View, Text, TextInput, StyleSheet } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { TimeField } from "@/components/ui/TimeField";
+import { SuggestionNote } from "@/components/ui/SuggestionNote";
 import { HoleCheck, OverallResultCard } from "@/components/ui/PercolationSummary";
 import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
 
@@ -60,6 +61,7 @@ interface SurfacePercProps {
   setSurfStdField: (holeIdx: number, fillIdx: number, field: "start" | "finish", value: string) => void;
   surfStdResult: number | null;
   surfStdComments: string;
+  surfStdCommentsSuggestion?: string | null;
   setSurfStdComments: (val: string) => void;
 
   // Step 5: Modified method
@@ -85,6 +87,7 @@ export default function SurfacePercTab(props: SurfacePercProps) {
     surfStdHoles,
     setSurfStdField,
     surfStdComments,
+    surfStdCommentsSuggestion,
     setSurfStdComments,
     surfModHoles,
     setSurfModField,
@@ -313,6 +316,7 @@ export default function SurfacePercTab(props: SurfacePercProps) {
           placeholder="Enter comments for Step 4 (Standard method)..."
           textAlignVertical="top"
         />
+        <SuggestionNote value={surfStdComments} suggestion={surfStdCommentsSuggestion ?? null} onUse={setSurfStdComments} />
       </View>
 
       <SectionHeader title="Step 5: Modified Method (210 < T₁₀₀ ≤ 300 min)" />

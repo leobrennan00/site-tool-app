@@ -28,9 +28,14 @@ import {
   polishingFilterArea,
   polishingTrenchLength,
   septicTrenchLength,
-  pickParagraphTemplateKey,
-  renderParagraphTemplate,
 } from "@/lib/designRules/dwwtsSizing";
+import { DWWTS_INSTALL_OPTIONS } from "@/lib/designRules/epaCop2021";
+import {
+  Development, PercRange, SystemKind, deskStudyComment, visualAssessmentComment, trialHoleEvaluation as trialHoleEvaluationText,
+  step4Comment, siteSpecificConditions as sscParagraph, qaInstallation, qaMaintenance as qaMaintenanceText,
+  pastExperienceSuggestion, suggestExpectedRange, suggestTrenchesOrFilter, parsePE,
+} from "@/lib/designRules/paragraphs";
+import { useSuggestedText } from "@/hooks/useSuggestedText";
 import { vulnerabilityFromGsi, vulnerabilityLabelFromGsi, deriveGwpr } from "@/lib/designRules/groundwater";
 import { cacheMapsLocally, getLocalMapIndex, LocalMapIndex } from "@/lib/offlineMaps";
 import { standardHole, modifiedHole, t100Hole, overallResult, pickPercolationValue } from "@/lib/percolation";
@@ -235,6 +240,9 @@ export default function Index() {
   const [surname, setSurname] = useState("");
   const [address, setAddress] = useState("");
   const [peComments, setPeComments] = useState("");
+  // What the wastewater comes from (proposed / existing / extended house...).
+  // Drives the wording of most suggested paragraphs.
+  const [developmentType, setDevelopmentType] = useState<Development | null>(null);
   // Add near your other state declarations in index.tsx
   const [populationEquivalent, setPopulationEquivalent] = useState("");
   // Auto-fills P.E. from the EPA CoP 2021 bedrooms table the moment
@@ -247,7 +255,7 @@ export default function Index() {
     const n = Number(bedrooms);
     if (!populationEquivalent.trim() && bedrooms.trim() && Number.isFinite(n) && n > 0) {
       const suggestion = peFromBedrooms(n);
-      if (suggestion.value != null) setPopulationEquivalent(String(suggestion.value));
+      if (suggestion.value != null) setPopulationEquivalent(`P.E. = ${suggestion.value}`);   // Enda's wording
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bedrooms]);
@@ -266,6 +274,8 @@ export default function Index() {
   const [spaSI, setSpaSI] = useState(false);
   const [spaSO, setSpaSO] = useState(false);
   const [gwProtectionResponse, setGwProtectionResponse] = useState(""); // e.g. "R1"
+  // Desk-study expectation of the percolation range (assessor's call, suggested from the soil type)
+  const [expectedRange, setExpectedRange] = useState<PercRange | null>(null);
   const [significantSites, setSignificantSites] = useState("");
   const [pastExperience, setPastExperience] = useState("");
   const [deskComments, setDeskComments] = useState("");
@@ -381,6 +391,9 @@ export default function Index() {
 
   // 5.0 Selected DWWTS
   const [dwwtsInstall, setDwwtsInstall] = useState("");
+  // For a secondary system: gravity percolation trenches or a pumped soil polishing filter
+  const [polishingConstruction, setPolishingConstruction] = useState<"trenches" | "filter" | null>(null);
+  const [treatmentUnit, setTreatmentUnit] = useState("BAF");
   const [dwwtsDischargeTo, setDwwtsDischargeTo] = useState("");
   const [invertLevel, setInvertLevel] = useState("");           // metres
   const [siteSpecificConditions, setSiteSpecificConditions] = useState("");
@@ -455,12 +468,9 @@ const TANK_TYPES = [
   const [surfaceAreaM2, setSurfaceAreaM2] = useState("");              // m²
   const [dischargeRateM3hr, setDischargeRateM3hr] = useState("");      // m³/hr (ALWAYS editable)
 
-  const [qaInstall, setQaInstall] = useState(
-    "The wastewater treatment system must be installed in accordance with the manufacturer's instructions. The soil polishing filter must be installed in accordance with the plans attached below."
-  );
-  const [qaMaintenance, setQaMaintenance] = useState(
-    "The homeowner must enter into a maintenance contract with the system manufacturer. The system must be inspected and maintained on an annual basis."
-  );
+  // Filled with the standard wording for the chosen system (see useSuggestedText below)
+  const [qaInstall, setQaInstall] = useState("");
+  const [qaMaintenance, setQaMaintenance] = useState("");
 
   // 7.0 — SITE ASSESSOR DETAILS
   const [assCompany, setAssCompany] = useState("");
@@ -1209,40 +1219,97 @@ const TANK_TYPES = [
   // (same "suggest, never overwrite" convention as the Conclusion
   // auto-fills above), and the *Reason values are passed down to the
   // screens to show under each suggested field.
-  const peValue = Number(populationEquivalent) || null;
+  const peValue = parsePE(populationEquivalent);
+  // Enda sizes on the slower (higher) of the subsurface and surface results
+  // (e.g. report 26003: 37.3 / 41.7 -> band 41-50).
+  const designPV = ssPV != null && sPV != null && sPV <= 90 ? Math.max(ssPV, sPV) : ssPV;
 
-  const bandSuggestion = ssPV != null
-    ? resultBand(ssPV)
+  const bandSuggestion = designPV != null
+    ? resultBand(designPV)
     : { value: null as string | null, reason: "Complete the subsurface percolation test (Step 4/5) first." };
 
   const loadingRateSuggestion = bandSuggestion.value
     ? loadingRateForBand(bandSuggestion.value)
     : { value: null as number | null, reason: bandSuggestion.reason };
 
-  const filterAreaSuggestion = (peValue && ssPV != null)
-    ? polishingFilterArea(peValue, ssPV)
+  const filterAreaSuggestion = (peValue && designPV != null)
+    ? polishingFilterArea(peValue, designPV)
     : { value: null as number | null, reason: "Enter P.E. and complete the percolation test first." };
 
-  const polishTrenchSuggestion = (peValue && ssPV != null)
-    ? polishingTrenchLength(peValue, ssPV)
+  const polishTrenchSuggestion = (peValue && designPV != null)
+    ? polishingTrenchLength(peValue, designPV)
+    : { value: null as { totalM: number; trenchCount: number; lengthEach: number } | null, reason: "Enter P.E. and complete the percolation test first." };
+
+  const septicTrenchSuggestion = (peValue && designPV != null)
+    ? septicTrenchLength(peValue, designPV)
     : { value: null as { totalM: number; trenchCount: number } | null, reason: "Enter P.E. and complete the percolation test first." };
 
-  const septicTrenchSuggestion = (peValue && ssPV != null)
-    ? septicTrenchLength(peValue, ssPV)
-    : { value: null as { totalM: number; trenchCount: number } | null, reason: "Enter P.E. and complete the percolation test first." };
+  // ---- Suggested paragraphs in Enda Colleran's standard wording ----
+  // lib/designRules/paragraphs.ts builds each one from this report's data;
+  // useSuggestedText fills a box only while it is empty or still holds the
+  // last suggestion, so anything the assessor writes is kept.
+  const constructionSuggestion = suggestTrenchesOrFilter({
+    gwpr: gwProtectionResponse, bedrock: depthBedrock, waterTable: depthWaterTable, development: developmentType,
+  });
+  const systemKind: SystemKind | null =
+    dwwtsInstall === DWWTS_INSTALL_OPTIONS.septicTank ? "septic"
+    : dwwtsInstall === DWWTS_INSTALL_OPTIONS.tertiary ? "tertiary"
+    : dwwtsInstall === DWWTS_INSTALL_OPTIONS.secondaryAndPolishingFilter
+      ? (polishingConstruction ?? constructionSuggestion?.value ?? null)
+      : null;
+  const suggestedParagraph = sscParagraph({
+    system: systemKind,
+    pe: peValue,
+    band: bandSuggestion.value,
+    filterArea: Number(pfSurfaceArea) || filterAreaSuggestion.value,
+    trenches: systemKind === "septic" && septicTrenchSuggestion.value
+      ? { count: septicTrenchSuggestion.value.trenchCount, lengthEach: septicTrenchSuggestion.value.totalM / septicTrenchSuggestion.value.trenchCount, total: septicTrenchSuggestion.value.totalM }
+      : systemKind === "trenches" && polishTrenchSuggestion.value
+        ? { count: polishTrenchSuggestion.value.trenchCount, lengthEach: polishTrenchSuggestion.value.lengthEach, total: polishTrenchSuggestion.value.totalM }
+        : null,
+    gwpr: gwProtectionResponse, bedrock: depthBedrock, waterTable: depthWaterTable,
+    unitName: treatmentUnit, development: developmentType,
+  });
+  const paragraphReason = suggestedParagraph
+    ? undefined
+    : !dwwtsInstall ? "Choose a system above to get the standard wording."
+    : !peValue ? "Enter the P.E. (Client & Site Info) to get the standard wording."
+    : "Complete the percolation tests to get the standard wording.";
 
-  const paragraphTemplateKey = pickParagraphTemplateKey(dwwtsInstall, slope);
-  const suggestedParagraph = paragraphTemplateKey
-    ? renderParagraphTemplate(paragraphTemplateKey, {
-        pe: peValue, band: bandSuggestion.value,
-        area: filterAreaSuggestion.value, loadingRate: loadingRateSuggestion.value,
-      })
-    : null;
-  const paragraphReason = paragraphTemplateKey
-    ? "Auto-filled from the system + slope you selected (EPA CoP 2021) — edit freely."
-    : (dwwtsInstall
-        ? "Record the site slope in Visual Assessment to get a suggested paragraph."
-        : "Choose a system above to get a suggested paragraph.");
+  const suggestedDeskComment = deskStudyComment({
+    soilType, expectedRange: expectedRange ?? suggestExpectedRange(soilType), vulnerability,
+    aquiferCategory, gwpr: gwProtectionResponse, development: developmentType,
+  });
+  const suggestedVisualComment = visualAssessmentComment({
+    landscape: landscapePosition, groundCondition, vegIndicators, drainageDitches, watercourses,
+    waterSupply, privateWell: privateWellDetail, development: developmentType,
+  });
+  const suggestedTrialEval = trialHoleEvaluationText({
+    layers: layersForPayload(soilLayers), depth: trialDepth, bedrock: depthBedrock, waterTable: depthWaterTable,
+    ingress: depthIngress, likelyPV: likelySubsurfaceP, development: developmentType,
+  });
+  const suggestedStep4Sub = step4Comment({ kind: "subsurface", likelyPV: likelySubsurfaceP, actualPV: ssPV, development: developmentType });
+  const suggestedStep4Surf = step4Comment({ kind: "surface", likelyPV: likelySurfaceP || likelySubsurfaceP, actualPV: sPV, development: developmentType });
+  const suggestedQaInstall = qaInstallation(systemKind);
+  const suggestedQaMaintenance = qaMaintenanceText(systemKind);
+  const suggestedPastExperience = pastExperienceSuggestion(developmentType);
+  // Boilerplate earlier builds pre-filled; treated as "not written by the assessor"
+  const LEGACY_QA = [
+    "I have read the relevant sections of the EPA CoP and the specification is in accordance with the manual.",
+    "I have read the relevant sections of the EPA CoP and maintenance requirements have been set out in accordance with the manual.",
+    "The wastewater treatment system must be installed in accordance with the manufacturer's instructions. The soil polishing filter must be installed in accordance with the plans attached below.",
+    "The homeowner must enter into a maintenance contract with the system manufacturer. The system must be inspected and maintained on an annual basis.",
+  ];
+  // earlier builds pre-filled "[PLACEHOLDER — … wording TBD]" here
+  useSuggestedText(siteSpecificConditions, setSiteSpecificConditions, suggestedParagraph, currentReportId, [/^\[PLACEHOLDER/]);
+  useSuggestedText(deskComments, setDeskComments, suggestedDeskComment, currentReportId);
+  useSuggestedText(visualComments, setVisualComments, suggestedVisualComment, currentReportId);
+  useSuggestedText(trialHoleEvaluation, setTrialHoleEvaluation, suggestedTrialEval, currentReportId);
+  useSuggestedText(step4Comments, setStep4Comments, suggestedStep4Sub, currentReportId);
+  useSuggestedText(surfStdComments, setSurfStdComments, suggestedStep4Surf, currentReportId);
+  useSuggestedText(qaInstall, setQaInstall, suggestedQaInstall, currentReportId, LEGACY_QA);
+  useSuggestedText(qaMaintenance, setQaMaintenance, suggestedQaMaintenance, currentReportId, LEGACY_QA);
+  useSuggestedText(pastExperience, setPastExperience, suggestedPastExperience, currentReportId);
 
   // Soil polishing filter area: pfSurfaceArea (Chapter 8) and surfaceAreaM2
   // (Discharge Route) map to the *same* PDF field on the backend, so they
@@ -1284,12 +1351,6 @@ const TANK_TYPES = [
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingRateSuggestion.value]);
 
-  useEffect(() => {
-    if (suggestedParagraph && !siteSpecificConditions.trim()) {
-      setSiteSpecificConditions(suggestedParagraph);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestedParagraph]);
 
   // ---- Groundwater Protection Response (EPA CoP Table 2) ----
   // Derived from the form's aquifer + vulnerability (+ SPA), so it follows
@@ -2174,6 +2235,7 @@ const TANK_TYPES = [
       setSurname(clientInfo.surname || '');
       setAddress(clientInfo.address || '');
       setPeComments(clientInfo.peComments || '');
+      setDevelopmentType(clientInfo.developmentType || null);
       setPopulationEquivalent(clientInfo.populationEquivalent || '');
 
       const deskStudy = report.desk_study || {};
@@ -2194,6 +2256,7 @@ const TANK_TYPES = [
       setSignificantSites(deskStudy.significantSites || '');
       setPastExperience(deskStudy.pastExperience || '');
       setDeskComments(deskStudy.deskComments || '');
+      setExpectedRange(deskStudy.expectedRange || null);
 
       const visualAssessment = report.visual_assessment || {};
       setLandscapePosition(visualAssessment.landscapePosition || '');
@@ -2302,6 +2365,8 @@ const TANK_TYPES = [
 
       const selectedDwwts = report.selected_dwwts || {};
       setDwwtsInstall(selectedDwwts.dwwtsInstall || '');
+      setPolishingConstruction(selectedDwwts.polishingConstruction || null);
+      setTreatmentUnit(selectedDwwts.treatmentUnit ?? 'BAF');
       setDwwtsDischargeTo(selectedDwwts.dwwtsDischargeTo || '');
       setInvertLevel(selectedDwwts.invertLevel || '');
       setSiteSpecificConditions(selectedDwwts.siteSpecificConditions || '');
@@ -2431,6 +2496,7 @@ const TANK_TYPES = [
         setSurname('');
         setAddress('');
         setPeComments('');
+        setDevelopmentType(null);
         setPopulationEquivalent('');
         setSoilType('');
         setSubsoilType('');
@@ -2449,6 +2515,7 @@ const TANK_TYPES = [
         setSignificantSites('');
         setPastExperience('');
         setDeskComments('');
+        setExpectedRange(null);
         setLandscapePosition('');
         setSlope('');
         setSlopeProposed('');
@@ -2562,6 +2629,8 @@ const TANK_TYPES = [
 
         // Reset Selected DWWTS data
         setDwwtsInstall('');
+        setPolishingConstruction(null);
+        setTreatmentUnit('BAF');
         setDwwtsDischargeTo('');
         setInvertLevel('');
         setSiteSpecificConditions('');
@@ -2596,8 +2665,8 @@ const TANK_TYPES = [
         setDischargeRateM3hr('');
 
         // Reset Quality Assurance data
-        setQaInstall("I have read the relevant sections of the EPA CoP and the specification is in accordance with the manual.");
-        setQaMaintenance("I have read the relevant sections of the EPA CoP and maintenance requirements have been set out in accordance with the manual.");
+        setQaInstall("");          // filled with the standard wording once a system is chosen
+        setQaMaintenance("");
 
         // Reset Site Assessor data (except defaults which will be applied below)
         setSignatureUrl(null);
@@ -2847,6 +2916,7 @@ const TANK_TYPES = [
         surname,
         address,
         peComments,
+        developmentType,
         populationEquivalent,
       },
       deskStudy: {
@@ -2867,6 +2937,7 @@ const TANK_TYPES = [
         significantSites,
         pastExperience,
         deskComments,
+        expectedRange,
       },
       visualAssessment: {
         landscapePosition,
@@ -2962,6 +3033,8 @@ const TANK_TYPES = [
         dwwtsDischargeTo,
         invertLevel,
         siteSpecificConditions,
+        polishingConstruction,
+        treatmentUnit,
       },
       conclusion: {
         slopeProposed,
@@ -3152,6 +3225,8 @@ return (
         setWaterSupply={setWaterSupply}
         privateWellDetail={privateWellDetail}
         setPrivateWellDetail={setPrivateWellDetail}
+        developmentType={developmentType}
+        setDevelopmentType={setDevelopmentType}
       />
     )}
 
@@ -3193,6 +3268,11 @@ return (
         setPastExperience={setPastExperience}
         deskComments={deskComments}
         setDeskComments={setDeskComments}
+        deskCommentsSuggestion={suggestedDeskComment}
+        pastExperienceSuggestion={suggestedPastExperience}
+        expectedRange={expectedRange}
+        setExpectedRange={setExpectedRange}
+        expectedRangeSuggestion={suggestExpectedRange(soilType)}
       />
     )}
 
@@ -3240,6 +3320,7 @@ return (
         wellsText={wellsText}
         setWellsText={setWellsText}
         visualComments={visualComments}
+        visualCommentsSuggestion={suggestedVisualComment}
         setVisualComments={setVisualComments}
       />
     )}
@@ -3284,6 +3365,7 @@ return (
         likelySurfaceP={likelySurfaceP}
         setLikelySurfaceP={setLikelySurfaceP}
         trialHoleEvaluation={trialHoleEvaluation}
+        trialHoleEvaluationSuggestion={suggestedTrialEval}
         setTrialHoleEvaluation={setTrialHoleEvaluation}
       />
     )}
@@ -3299,6 +3381,7 @@ return (
         setStdField={setStdField}
         stdResult={stdResult}
         step4Comments={step4Comments}
+        step4CommentsSuggestion={suggestedStep4Sub}
         setStep4Comments={setStep4Comments}
         modHoles={modHoles}
         setModHoles={setModHoles}
@@ -3318,6 +3401,7 @@ return (
         setSurfStdField={setSurfStdField}
         surfStdResult={surfStdResult}
         surfStdComments={surfStdComments}
+        surfStdCommentsSuggestion={suggestedStep4Surf}
         setSurfStdComments={setSurfStdComments}
         surfModHoles={surfModHoles}
         setSurfModField={setSurfModField}
@@ -3366,6 +3450,12 @@ return (
         siteSpecificConditions={siteSpecificConditions}
         setSiteSpecificConditions={setSiteSpecificConditions}
         siteSpecificConditionsHint={paragraphReason}
+        siteSpecificConditionsSuggestion={suggestedParagraph}
+        polishingConstruction={polishingConstruction}
+        setPolishingConstruction={setPolishingConstruction}
+        constructionSuggestion={constructionSuggestion}
+        treatmentUnit={treatmentUnit}
+        setTreatmentUnit={setTreatmentUnit}
       />
     )}
 
@@ -3443,6 +3533,8 @@ return (
         setQaInstall={setQaInstall}
         qaMaintenance={qaMaintenance}
         setQaMaintenance={setQaMaintenance}
+        qaInstallSuggestion={suggestedQaInstall}
+        qaMaintenanceSuggestion={suggestedQaMaintenance}
       />
     )}
 

@@ -4,8 +4,12 @@ import { Brand } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup } from "@/components/ui/kit";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { PrefixPicker } from "@/components/ui/PrefixPicker";
+import { Development, DEVELOPMENT_OPTIONS } from "@/lib/designRules/paragraphs";
 
 interface ClientInfoProps {
+  /** Proposed / existing / extended house…: sets the wording of the suggested paragraphs. */
+  developmentType: Development | null;
+  setDevelopmentType: (v: Development) => void;
   fileRef: string;
   setFileRef: (val: string) => void;
   prefix: string;
@@ -36,7 +40,7 @@ export default function ClientInfoTab(props: ClientInfoProps) {
     surname, setSurname, address, setAddress, siteLocation, setSiteLocation,
     bedrooms, setBedrooms, residents, setResidents,
     populationEquivalent, setPopulationEquivalent,
-    waterSupply, setWaterSupply, privateWellDetail, setPrivateWellDetail,
+    waterSupply, setWaterSupply, privateWellDetail, setPrivateWellDetail, developmentType, setDevelopmentType,
   } = props;
 
   return (
@@ -65,6 +69,14 @@ export default function ClientInfoTab(props: ClientInfoProps) {
       <Card>
         <CardTitle>Site Details</CardTitle>
         <View style={{ marginBottom: 14 }}>
+          <RadioGroup
+            label="The wastewater is from"
+            value={developmentType}
+            onChange={(v) => setDevelopmentType(v)}
+            options={DEVELOPMENT_OPTIONS}
+          />
+        </View>
+        <View style={{ marginBottom: 14 }}>
           <FormInput label="Site Location & Townland" value={siteLocation} onChangeText={setSiteLocation} placeholder="e.g. Townland, County" />
         </View>
         <View style={{ flexDirection: "row", gap: 12 }}>
@@ -80,7 +92,7 @@ export default function ClientInfoTab(props: ClientInfoProps) {
             label="Comments on Population Equivalent"
             value={populationEquivalent}
             onChangeText={setPopulationEquivalent}
-            placeholder="e.g. 6 PE based on 4 bedroom house"
+            placeholder="e.g. P.E. = 6"
             multiline
           />
         </View>

@@ -3,6 +3,7 @@ import { ScrollView, View, Text, TextInput, StyleSheet, Platform, Pressable } fr
 import { Brand, Font, Shadow } from "@/constants/theme";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { TimeField } from "@/components/ui/TimeField";
+import { SuggestionNote } from "@/components/ui/SuggestionNote";
 import { SoilLayer, LAYER_TEXT_FIELDS, newLayer, layerErrors } from "@/lib/trialHole";
 
 // Constants for soil horizons grid - matching the actual report format
@@ -65,6 +66,7 @@ interface TrialHoleProps {
   likelySurfaceP: string;
   setLikelySurfaceP: (val: string) => void;
   trialHoleEvaluation: string;
+  trialHoleEvaluationSuggestion?: string | null;
   setTrialHoleEvaluation: (val: string) => void;
 }
 
@@ -88,7 +90,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
     soilLayers, setSoilLayers,
     likelySubsurfaceP, setLikelySubsurfaceP,
     likelySurfaceP, setLikelySurfaceP,
-    trialHoleEvaluation, setTrialHoleEvaluation,
+    trialHoleEvaluation, setTrialHoleEvaluation, trialHoleEvaluationSuggestion,
   } = props;
 
   // Helper function to limit text to 50 lines
@@ -413,6 +415,8 @@ export default function TrialHoleTab(props: TrialHoleProps) {
             placeholder="Enter observations (e.g. water ingress, mottling, suitability assessment)..."
             multiline
           />
+          <SuggestionNote value={trialHoleEvaluation} suggestion={trialHoleEvaluationSuggestion ?? null} onUse={setTrialHoleEvaluation}
+            missing="Add the soil layers and the trial hole depth to get the standard wording." />
         </View>
       </View>
     </KeyboardAwareScrollView>

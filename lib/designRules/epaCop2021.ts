@@ -48,11 +48,13 @@ export const LOADING_RATE_BY_BAND: Record<string, number | null> = {
 };
 
 // Rule 6 — polishing filter trenches: metres of 500mm-wide trench per P.E.,
-// by band. `null` = not yet set.
+// by band. `null` = not yet set. 21-40 and 41-50 are taken from Enda
+// Colleran's completed reports (25123/26002: 48m -> 5 x 10m for P.E. 4;
+// 26013: 85m for P.E. 5) and are awaiting his confirmation.
 export const POLISHING_TRENCH_M_PER_PE_BY_BAND: Record<string, number | null> = {
   '3-20': 6,
-  '21-40': null,
-  '41-50': null,
+  '21-40': 12,
+  '41-50': 17,
   '51-75': null,
   '76-90': null,
 };
@@ -65,27 +67,8 @@ export const SEPTIC_TRENCH_M_PER_PE = 18;
 export const SEPTIC_TRENCH_MAX_LENGTH_M = 18;
 export const SEPTIC_TRENCH_MAX_RESULT = 50;
 
-// Paragraph templates for "Site Specific Conditions" (selectedDwwts.tsx),
-// chosen by which system the assessor selects (and, for the secondary
-// treatment option, by site slope — see dwwtsSizing.ts). Wording is
-// deliberately a placeholder: {pe} / {band} / {area} / {loading_rate} are
-// substituted in, final text to be supplied later — keep these easy to
-// edit without touching any calculation logic.
-export const PARAGRAPH_TEMPLATES = {
-  soilPolishingFilter:
-    '[PLACEHOLDER — soil polishing filter wording TBD] Proposed soil polishing filter sized for {pe} P.E. ' +
-    '(result band {band}, loading rate {loading_rate} L/m2/day), surface area {area} m2.',
-  percolationTrenches:
-    '[PLACEHOLDER — percolation trenches wording TBD] Proposed polishing filter percolation trenches sized for ' +
-    '{pe} P.E. (result band {band}).',
-  septicTank:
-    '[PLACEHOLDER — septic tank wording TBD] Proposed septic tank and percolation area sized for {pe} P.E. ' +
-    '(result band {band}).',
-  tertiaryTreatment:
-    '[PLACEHOLDER — tertiary treatment wording TBD] Proposed tertiary treatment system and infiltration/treatment ' +
-    'area sized for {pe} P.E. (result band {band}).',
-} as const;
-export type ParagraphTemplateKey = keyof typeof PARAGRAPH_TEMPLATES;
+// Site Specific Conditions wording lives in lib/designRules/paragraphs.ts
+// (Enda Colleran's standard paragraphs).
 
 export const ENTER_MANUALLY_REASON = 'Not yet set in EPA CoP 2021 rules — enter manually.';
 export const OUT_OF_RANGE_REASON = 'Result outside the EPA CoP 2021 range (3-90) — no system suggested, enter manually.';

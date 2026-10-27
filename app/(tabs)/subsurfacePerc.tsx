@@ -4,6 +4,7 @@ import { Brand, Font, Shadow } from "@/constants/theme";
 import { Stopwatch } from "@/components/ui/Stopwatch";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { TimeField } from "@/components/ui/TimeField";
+import { SuggestionNote } from "@/components/ui/SuggestionNote";
 import { HoleCheck, OverallResultCard } from "@/components/ui/PercolationSummary";
 import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
 
@@ -61,6 +62,7 @@ interface SubsurfacePercProps {
   setStdField: (holeIdx: number, fillIdx: number, field: "start" | "finish", value: string) => void;
   stdResult: number | null;
   step4Comments: string;
+  step4CommentsSuggestion?: string | null;
   setStep4Comments: (val: string) => void;
 
   // Step 5: Modified method
@@ -86,6 +88,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
     setStdHoles,
     setStdField,
     step4Comments,
+    step4CommentsSuggestion,
     setStep4Comments,
     modHoles,
     setModHoles,
@@ -337,6 +340,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
           placeholder="Enter comments for Step 4 (Standard method)..."
           textAlignVertical="top"
         />
+        <SuggestionNote value={step4Comments} suggestion={step4CommentsSuggestion ?? null} onUse={setStep4Comments} />
       </View>
 
       <SectionHeader title="Step 5: Modified Method (T₁₀₀ > 210 min)" />

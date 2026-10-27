@@ -1,10 +1,19 @@
 import React from "react";
+import { SuggestionNote } from "@/components/ui/SuggestionNote";
+import { PercRange, PERC_RANGES } from "@/lib/designRules/paragraphs";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, RadioGroup, CheckRow, InfoBanner } from "@/components/ui/kit";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 
 interface DeskStudyProps {
+  /** Suggested wording (lib/designRules/paragraphs.ts); null when there isn't enough data yet. */
+  deskCommentsSuggestion?: string | null;
+  pastExperienceSuggestion?: string | null;
+  /** Desk-study expectation of the percolation range, and the one suggested from the soil type. */
+  expectedRange?: PercRange | null;
+  setExpectedRange?: (v: PercRange) => void;
+  expectedRangeSuggestion?: PercRange | null;
   soilType: string;
   setSoilType: (val: string) => void;
   subsoilType: string;
@@ -53,7 +62,8 @@ export default function DeskStudyTab(props: DeskStudyProps) {
     nearbySupply, setNearbySupply, spaZOC, setSpaZOC, spaSI, setSpaSI, spaSO, setSpaSO,
     gwProtectionResponse, setGwProtectionResponse, significantSites, setSignificantSites,
     pastExperience, setPastExperience, deskComments, setDeskComments,
-    gwprSuggested, gwprReason, vulnerabilityGsiLabel,
+    gwprSuggested, gwprReason, vulnerabilityGsiLabel, deskCommentsSuggestion, pastExperienceSuggestion,
+    expectedRange, setExpectedRange, expectedRangeSuggestion,
   } = props;
 
   const codeOptions =
@@ -167,8 +177,28 @@ export default function DeskStudyTab(props: DeskStudyProps) {
         <CardTitle>Comments</CardTitle>
         <View style={{ gap: 14 }}>
           <FormInput label="Significant Sites Nearby" value={significantSites} onChangeText={setSignificantSites} placeholder="e.g. None within 1 km" />
-          <FormInput label="Past Experience in Area" value={pastExperience} onChangeText={setPastExperience} placeholder="e.g. Soil generally free-draining" multiline />
-          <FormInput label="Desk Study Comments" value={deskComments} onChangeText={setDeskComments} placeholder="Optional notes…" multiline />
+          <View>
+            <FormInput label="Past Experience in Area" value={pastExperience} onChangeText={setPastExperience} placeholder="e.g. None" multiline />
+            <SuggestionNote value={pastExperience} suggestion={pastExperienceSuggestion ?? null} onUse={setPastExperience} />
+          </View>
+          {setExpectedRange ? (
+            <View>
+              <RadioGroup
+                label="Expected percolation range (from the soils)"
+                value={expectedRange ?? expectedRangeSuggestion ?? null}
+                onChange={(v) => setExpectedRange(v)}
+                options={PERC_RANGES.map((r) => ({ label: r.charAt(0).toUpperCase() + r.slice(1), value: r }))}
+              />
+              {!expectedRange && expectedRangeSuggestion ? (
+                <Text style={styles.hint}>Suggested from the soil type. Change it if the site suggests otherwise.</Text>
+              ) : null}
+            </View>
+          ) : null}
+          <View>
+            <FormInput label="Desk Study Comments" value={deskComments} onChangeText={setDeskComments} placeholder="Optional notes…" multiline />
+            <SuggestionNote value={deskComments} suggestion={deskCommentsSuggestion ?? null} onUse={setDeskComments}
+              missing="Fill in vulnerability, aquifer and GWPR to get the standard wording." />
+          </View>
         </View>
       </Card>
     </KeyboardAwareScrollView>

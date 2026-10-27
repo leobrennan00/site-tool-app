@@ -15,10 +15,6 @@ import {
   SEPTIC_TRENCH_MAX_RESULT,
   ENTER_MANUALLY_REASON,
   OUT_OF_RANGE_REASON,
-  DWWTS_INSTALL_OPTIONS,
-  SLOPE_OPTIONS,
-  PARAGRAPH_TEMPLATES,
-  ParagraphTemplateKey,
 } from './epaCop2021';
 
 export interface Suggestion<T> {
@@ -84,16 +80,20 @@ export function polishingFilterArea(pe: number, ssPV: number): Suggestion<number
 export function polishingTrenchLength(
   pe: number,
   ssPV: number
-): Suggestion<{ totalM: number; trenchCount: number }> {
+): Suggestion<{ totalM: number; trenchCount: number; lengthEach: number }> {
   const band = resultBand(ssPV);
   if (!band.value) return { value: null, reason: band.reason };
   const mPerPe = POLISHING_TRENCH_M_PER_PE_BY_BAND[band.value];
   if (mPerPe == null) return { value: null, reason: ENTER_MANUALLY_REASON };
-  const totalM = round(mPerPe * pe, 1);
-  const trenchCount = Math.ceil(totalM / POLISHING_TRENCH_MAX_LENGTH_M);
+  const needM = mPerPe * pe;
+  const trenchCount = Math.ceil(needM / POLISHING_TRENCH_MAX_LENGTH_M - 1e-9);
+  // whole trenches of equal length, rounded up to the next 0.5m (as in Enda's
+  // reports: 48m needed -> 5 trenches x 10m = 50m)
+  const lengthEach = Math.ceil((needM / trenchCount) * 2 - 1e-9) / 2;
+  const totalM = round(trenchCount * lengthEach, 1);
   return {
-    value: { totalM, trenchCount },
-    reason: `${mPerPe} m per P.E. x ${pe} P.E. = ${totalM} m total (max ${POLISHING_TRENCH_MAX_LENGTH_M} m/trench ⇒ ${trenchCount} trench(es))`,
+    value: { totalM, trenchCount, lengthEach },
+    reason: `${mPerPe} m per P.E. x ${pe} P.E. = ${round(needM, 1)} m needed ⇒ ${trenchCount} trench(es) x ${lengthEach} m = ${totalM} m`,
   };
 }
 
@@ -116,41 +116,4 @@ export function septicTrenchLength(
     value: { totalM, trenchCount },
     reason: `${SEPTIC_TRENCH_M_PER_PE} m per P.E. x ${pe} P.E. = ${totalM} m total (max ${SEPTIC_TRENCH_MAX_LENGTH_M} m/trench ⇒ ${trenchCount} trench(es))`,
   };
-}
-
-/**
- * Which of the 4 paragraph templates applies, based on the system the
- * assessor selected in "Propose to install" and — only for the secondary
- * treatment + polishing filter option, which can be built either way — the
- * recorded site slope. Returns null when the assessor hasn't chosen a
- * system yet, or (for the secondary option) hasn't recorded a slope: in
- * either case there's nothing to suggest and the assessor picks manually.
- */
-export function pickParagraphTemplateKey(
-  dwwtsInstall: string,
-  slope: string
-): ParagraphTemplateKey | null {
-  if (dwwtsInstall === DWWTS_INSTALL_OPTIONS.septicTank) return 'septicTank';
-  if (dwwtsInstall === DWWTS_INSTALL_OPTIONS.tertiary) return 'tertiaryTreatment';
-  if (dwwtsInstall === DWWTS_INSTALL_OPTIONS.secondaryAndPolishingFilter) {
-    if (slope === SLOPE_OPTIONS.steep || slope === SLOPE_OPTIONS.shallow) return 'percolationTrenches';
-    if (slope === SLOPE_OPTIONS.relativelyFlat) return 'soilPolishingFilter';
-    return null;
-  }
-  return null;
-}
-
-/** Fills {pe}/{band}/{area}/{loading_rate} placeholders. Any value not
- *  available yet (e.g. area is "Enter manually") renders as "—" rather
- *  than leaving the literal placeholder text in the paragraph. */
-export function renderParagraphTemplate(
-  key: ParagraphTemplateKey,
-  values: { pe?: number | null; band?: string | null; area?: number | null; loadingRate?: number | null }
-): string {
-  const fmt = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
-  return PARAGRAPH_TEMPLATES[key]
-    .replace('{pe}', fmt(values.pe))
-    .replace('{band}', fmt(values.band))
-    .replace('{area}', fmt(values.area))
-    .replace('{loading_rate}', fmt(values.loadingRate));
 }
