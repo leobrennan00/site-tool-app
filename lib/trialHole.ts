@@ -34,14 +34,41 @@ const num = (s: string) => {
 };
 const fmt = (n: number) => (Math.round(n * 100) / 100).toString();
 
+const LAYER_TEXT_KEYS = LAYER_TEXT_FIELDS.map((f) => f.key);
+
+/**
+ * The last entry can be a note for the bottom of the hole (e.g. "Large
+ * boulders/bedrock at bottom of trial hole @ 0.7m BGL") rather than a layer:
+ * it has text but no "To" depth, and its "From" is blank or at/below the
+ * hole depth (adding a layer pre-fills "From"). Returns the depth layers and
+ * that note, if any.
+ */
+export function splitBaseNote(layers: SoilLayer[], trialDepth: string): { layers: SoilLayer[]; note: SoilLayer | null } {
+  const last = layers[layers.length - 1];
+  if (!last || String(last.to ?? '').trim() !== '') return { layers, note: null };
+  if (!LAYER_TEXT_KEYS.some((k) => String(last[k] ?? '').trim())) return { layers, note: null };
+  const from = num(last.from), td = num(trialDepth);
+  const atBottom = Number.isNaN(from) || (!Number.isNaN(td) && from >= td - 0.005);
+  return atBottom ? { layers: layers.slice(0, -1), note: last } : { layers, note: null };
+}
+
+/** The bottom-of-hole note's descriptions for the report payload, or null. */
+export function baseNoteForPayload(layers: SoilLayer[], trialDepth: string) {
+  const { note } = splitBaseNote(layers, trialDepth);
+  if (!note) return null;
+  return Object.fromEntries(LAYER_TEXT_KEYS.map((k) => [k, String(note[k] ?? '').trim()]));
+}
+
 /**
  * Problems with the layer log, in plain words. Empty array = OK.
  * Checks: numbers present, from < to, first layer starts at 0, no gaps or
  * overlaps between consecutive layers, no layer below the hole, and the last
- * layer reaches the full trial hole depth.
+ * layer reaches the full trial hole depth. A bottom-of-hole note (see
+ * splitBaseNote) isn't a layer and isn't checked.
  */
-export function layerErrors(layers: SoilLayer[], trialDepth: string): string[] {
+export function layerErrors(allLayers: SoilLayer[], trialDepth: string): string[] {
   const errs: string[] = [];
+  const { layers } = splitBaseNote(allLayers, trialDepth);
   if (!layers.length) return errs;
   const EPS = 0.005;
   const parsed = layers.map((l, i) => ({ n: i + 1, from: num(l.from), to: num(l.to) }));

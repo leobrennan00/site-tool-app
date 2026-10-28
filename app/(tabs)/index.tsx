@@ -28,6 +28,7 @@ import {
   polishingFilterArea,
   polishingTrenchLength,
   septicTrenchLength,
+  dischargeRateM3PerHour,
 } from "@/lib/designRules/dwwtsSizing";
 import { DWWTS_INSTALL_OPTIONS } from "@/lib/designRules/epaCop2021";
 import {
@@ -38,9 +39,9 @@ import {
 import { useSuggestedText } from "@/hooks/useSuggestedText";
 import { vulnerabilityFromGsi, vulnerabilityLabelFromGsi, deriveGwpr } from "@/lib/designRules/groundwater";
 import { cacheMapsLocally, getLocalMapIndex, LocalMapIndex } from "@/lib/offlineMaps";
-import { standardHole, modifiedHole, t100Hole, overallResult, pickPercolationValue } from "@/lib/percolation";
+import { standardHole, modifiedHole, t100Hole, overallResult, pickPercolationValue, copyHoleOne, SHARED_HOLE_FIELDS } from "@/lib/percolation";
 import { normalizePrefix, fullName } from "@/lib/names";
-import { SoilLayer, layerErrors, layersForPayload } from "@/lib/trialHole";
+import { SoilLayer, layerErrors, layersForPayload, baseNoteForPayload } from "@/lib/trialHole";
 import { startSyncEngine } from "../../lib/syncProcessor";
 import { markDeskStudyPending, markDeskStudyReady, getDeskStudyStatus, DeskStudyStatus } from "../../lib/deskStudyCache";
 import MapsTab from "./maps";
@@ -64,6 +65,7 @@ import { AppHeader } from "@/components/ui/kit";
 import { BottomTabBar } from "@/components/ui/BottomTabBar";
 import { ReportOverview, SectionId } from "@/components/ui/ReportOverview";
 import { IcoPlus } from "@/components/ui/icons";
+import { todayDMY } from "@/lib/dates";
 
 
 
@@ -479,10 +481,10 @@ const TANK_TYPES = [
   const [assSurname, setAssSurname] = useState("");
   const [assAddress, setAssAddress] = useState("");
   const [assQuals, setAssQuals] = useState("");
-  const [assDateOfReport, setAssDateOfReport] = useState(""); // YYYY-MM-DD
+  const [assDateOfReport, setAssDateOfReport] = useState(""); // DD/MM/YYYY
   useEffect(() => {
     // Autofill on first load only (won’t override if user already typed something)
-    setAssDateOfReport((prev) => prev?.trim() ? prev : new Date().toISOString().slice(0, 10));
+    setAssDateOfReport((prev) => prev?.trim() ? prev : todayDMY());
   }, []);
   const [assPhone, setAssPhone] = useState("");
   const [assEmail, setAssEmail] = useState("");
@@ -685,7 +687,7 @@ const TANK_TYPES = [
           prefix: "Mr",
           firstName: "Testy",
           surname: "McTestface",
-          reportDate: new Date().toISOString().slice(0, 10),
+          reportDate: todayDMY(),
         }),
       });
 
@@ -824,49 +826,14 @@ const TANK_TYPES = [
     mkSurfHole("1"), mkSurfHole("2"), mkSurfHole("3")
   ]);
 
-    // --- Auto-prefill dates within each test section ---
+    // --- Hole 1 pre-fills holes 2 and 3 (size, pre-soak, test date, 400 mm fill time) ---
 
-  type PercDateField = "preSoak1Date" | "preSoak2Date" | "testDate";
+  type HoleSharedField = (typeof SHARED_HOLE_FIELDS)[number];
 
-  const updatePercDateField = (index: number, field: PercDateField, value: string) => {
+  const updatePercHoleField = (index: number, field: HoleSharedField, value: string) => {
     setPercHoles((prev) => {
-      if (prev.length === 0) return prev;
-      const oldFirst = prev[0][field] || "";
-      const next = prev.map((h) => ({ ...h }));
-      next[index][field] = value;
-
-      // If we changed hole 1, propagate to other subsurface holes
-      if (index === 0) {
-        for (let i = 1; i < next.length; i++) {
-          const prevVal = prev[i][field];
-          if (prevVal === "" || prevVal === oldFirst) {
-            next[i][field] = value;
-          }
-        }
-      }
-      return next;
-    });
-  };
-
-  type SurfDateField = "preSoak1Date" | "preSoak2Date" | "testDate";
-
-  const updateSurfDateField = (index: number, field: SurfDateField, value: string) => {
-    setSurfHoles((prev) => {
-      if (prev.length === 0) return prev;
-      const oldFirst = prev[0][field] || "";
-      const next = prev.map((h) => ({ ...h }));
-      next[index][field] = value;
-
-      // If we changed hole 1, propagate to other surface holes
-      if (index === 0) {
-        for (let i = 1; i < next.length; i++) {
-          const prevVal = prev[i][field];
-          if (prevVal === "" || prevVal === oldFirst) {
-            next[i][field] = value;
-          }
-        }
-      }
-      return next;
+      const next = prev.map((h, i) => (i === index ? { ...h, [field]: value } : h));
+      return index === 0 ? copyHoleOne(prev, next) : next;
     });
   };
 
@@ -1069,7 +1036,7 @@ const TANK_TYPES = [
 
     // convenience setter
     const setSurfField = (hi: number, key: keyof SurfHole, val: string) => {
-      const copy = JSON.parse(JSON.stringify(surfHoles)) as SurfHole[];
+      let copy = JSON.parse(JSON.stringify(surfHoles)) as SurfHole[];
       (copy[hi] as any)[key] = val;
       // auto-calc hole depth if both top/base present
       if ((key === "topDepth" || key === "baseDepth")) {
@@ -1079,6 +1046,8 @@ const TANK_TYPES = [
           copy[hi].holeDepth = (base - top).toString();
         }
       }
+      // hole 1 pre-fills the shared fields of holes 2 and 3
+      if (hi === 0) copy = copyHoleOne(surfHoles, copy);
       // recompute T100 after time edits
       if (key === "fillTime" || key === "waterLevelTime") {
         recomputeSurfaceT100(copy);
@@ -1281,7 +1250,7 @@ const TANK_TYPES = [
     aquiferCategory, gwpr: gwProtectionResponse, development: developmentType,
   });
   const suggestedVisualComment = visualAssessmentComment({
-    landscape: landscapePosition, groundCondition, vegIndicators, drainageDitches, watercourses,
+    landscape: landscapePosition, groundCondition, vegIndicators, drainageDitches, watercourses, lakes,
     waterSupply, privateWell: privateWellDetail, development: developmentType,
   });
   const suggestedTrialEval = trialHoleEvaluationText({
@@ -1329,12 +1298,24 @@ const TANK_TYPES = [
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pfSurfaceArea]);
 
+  // Like Enda: a gravity polishing filter gets the Option 3 trench length,
+  // a pumped one the Option 2 surface area — never both.
   useEffect(() => {
-    if (polishTrenchSuggestion.value != null && !optGravityLength) {
+    if (systemKind === "trenches" && polishTrenchSuggestion.value != null && !optGravityLength) {
       setOptGravityLength(String(polishTrenchSuggestion.value.totalM));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [polishTrenchSuggestion.value?.totalM]);
+  }, [polishTrenchSuggestion.value?.totalM, systemKind]);
+
+  useEffect(() => {
+    if (systemKind === "filter" && pfSurfaceArea && !optPumpedArea) setOptPumpedArea(pfSurfaceArea);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pfSurfaceArea, systemKind]);
+
+  useEffect(() => {
+    if (peValue && !dischargeRateM3hr) setDischargeRateM3hr(String(dischargeRateM3PerHour(peValue)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peValue]);
 
   useEffect(() => {
     if (septicTrenchSuggestion.value != null) {
@@ -1746,7 +1727,7 @@ const TANK_TYPES = [
           residents: (residents ?? "").toString().trim(),
           waterSupply: (waterSupply || "").toLowerCase().trim(), // "mains" | "private" | "group"
           privateWellDetail: privateWellDetail || "",
-          reportDate: new Date().toISOString().slice(0, 10),
+          reportDate: todayDMY(),
 
           soilType: (soilType || "").trim(),
           subsoilType: (subsoilType || "").trim(),
@@ -1800,9 +1781,9 @@ const TANK_TYPES = [
           th_depthToWaterTable: (depthWaterTable || "").trim(),
           th_waterIngress: (depthIngress || "").trim(),
           th_rockType: (rockType || "").trim(),
-          th_excavationDate: (excavDate || "").trim(),     // "YYYY-MM-DD"
+          th_excavationDate: (excavDate || "").trim(),     // "DD/MM/YYYY"
           th_excavationTime: (excavTime || "").trim(),     // "HH:mm"
-          th_examinationDate: (examDate || "").trim(),     // "YYYY-MM-DD"
+          th_examinationDate: (examDate || "").trim(),     // "DD/MM/YYYY"
           th_examinationTime: (examTime || "").trim(),     // "HH:mm"
           // --- 3.2 Trial Hole — Soil Columns (manual full-column text) ---
           th_classificationColumn: (thClassificationCol || "").trim(),
@@ -1815,6 +1796,7 @@ const TANK_TYPES = [
 
           // --- 3.2 Soil layers, drawn at true depth on the log ---
           soil_layers: layersForPayload(soilLayers),
+          th_baseNote: baseNoteForPayload(soilLayers, trialDepth),
 
           // (optional but on this page) Likely percolation values
           likelySubsurfacePV: likelySubsurfaceP,
@@ -2155,7 +2137,7 @@ const TANK_TYPES = [
             surname: (assSurname || "").trim(),
             address: (assAddress || "").trim(),
             qualifications: (assQuals || "").trim(),
-            date_of_report: (assDateOfReport || new Date().toISOString().slice(0,10)),
+            date_of_report: (assDateOfReport || todayDMY()),
             phone: (assPhone || "").trim(),
             email: (assEmail || "").trim(),
             indemnity_insurance_number: (assIndemnity || "").trim(),
@@ -2671,7 +2653,7 @@ const TANK_TYPES = [
         // Reset Site Assessor data (except defaults which will be applied below)
         setSignatureUrl(null);
         setPlanPdfUrls([]);
-        setAssDateOfReport(new Date().toISOString().split('T')[0]);
+        setAssDateOfReport(todayDMY());
 
         // Apply assessor defaults if available
         if (assessorDefaults) {
@@ -3375,7 +3357,7 @@ return (
       <SubsurfacePercTab
         percHoles={percHoles}
         setPercHoles={setPercHoles}
-        updatePercDateField={updatePercDateField}
+        updatePercHoleField={updatePercHoleField}
         stdHoles={stdHoles}
         setStdHoles={setStdHoles}
         setStdField={setStdField}
@@ -3396,7 +3378,6 @@ return (
       <SurfacePercTab
         surfHoles={surfHoles}
         setSurfField={setSurfField}
-        updateSurfDateField={updateSurfDateField}
         surfStdHoles={surfStdHoles}
         setSurfStdField={setSurfStdField}
         surfStdResult={surfStdResult}

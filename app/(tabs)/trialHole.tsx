@@ -3,6 +3,7 @@ import { ScrollView, View, Text, TextInput, StyleSheet, Platform, Pressable } fr
 import { Brand, Font, Shadow } from "@/constants/theme";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { TimeField } from "@/components/ui/TimeField";
+import { DateField } from "@/components/ui/DateField";
 import { SuggestionNote } from "@/components/ui/SuggestionNote";
 import { SoilLayer, LAYER_TEXT_FIELDS, newLayer, layerErrors } from "@/lib/trialHole";
 
@@ -192,11 +193,10 @@ export default function TrialHoleTab(props: TrialHoleProps) {
         <View style={styles.dateRow}>
           <View style={styles.dateCol}>
             <Text style={styles.label}>Excavation Date</Text>
-            <TextInput
+            <DateField
               style={styles.input}
               value={excavDate}
-              onChangeText={setExcavDate}
-              placeholder="YYYY-MM-DD"
+              onChange={setExcavDate}
             />
           </View>
           <View style={styles.dateCol}>
@@ -208,11 +208,10 @@ export default function TrialHoleTab(props: TrialHoleProps) {
         <View style={styles.dateRow}>
           <View style={styles.dateCol}>
             <Text style={styles.label}>Examination Date</Text>
-            <TextInput
+            <DateField
               style={styles.input}
               value={examDate}
-              onChangeText={setExamDate}
-              placeholder="YYYY-MM-DD"
+              onChange={setExamDate}
             />
           </View>
           <View style={styles.dateCol}>
@@ -226,7 +225,9 @@ export default function TrialHoleTab(props: TrialHoleProps) {
         <Text style={styles.cardTitle}>Soil Layers</Text>
         <Text style={styles.note}>
           One entry per layer, from the surface down to the bottom of the hole. Each layer is drawn
-          on the report log at its true depth.
+          on the report log at its true depth. To write a note for the bottom of the hole (e.g.
+          "Large boulders/bedrock at bottom of trial hole @ 0.7m BGL"), add a last entry and leave
+          "To" blank.
         </Text>
 
         {soilLayers.map((layer, i) => (

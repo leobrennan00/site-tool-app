@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Brand, Font, Shadow, SectionMeta } from '@/constants/theme';
 import { IcoChevronLeft, IcoCheck } from './icons';
+import { DateField } from './DateField';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -103,6 +104,22 @@ export function FormInput({
         ]}
       />
       {hint ? <Text style={styles.inputHint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+/* ───────────────────────── FormDate ───────────────────────── */
+/** FormInput's look for a day-first date (DD/MM/YYYY) picked from a wheel. */
+export function FormDate({ label, value, onChange, style }: {
+  label?: string;
+  value: string;
+  onChange: (dmy: string) => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={style}>
+      {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
+      <DateField value={value} onChange={onChange} style={styles.input} />
     </View>
   );
 }

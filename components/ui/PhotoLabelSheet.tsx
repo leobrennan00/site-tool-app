@@ -52,7 +52,7 @@ export function PhotoLabelSheet({ visible, uri, usedLabels, current, progress, o
                 style={[styles.row, selected && styles.rowSelected]}
               >
                 <Text style={[styles.rowText, selected && styles.rowTextSelected]}>{label}</Text>
-                {used ? <Text style={styles.used}>already used</Text> : null}
+                {used ? <Text style={styles.used}>in use · moves here</Text> : null}
               </Pressable>
             );
           })}

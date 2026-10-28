@@ -4,6 +4,7 @@ import { View, Text, TextInput, StyleSheet } from "react-native";
 import { Brand, Font, Shadow } from "@/constants/theme";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { TimeField } from "@/components/ui/TimeField";
+import { DateField } from "@/components/ui/DateField";
 import { SuggestionNote } from "@/components/ui/SuggestionNote";
 import { HoleCheck, OverallResultCard } from "@/components/ui/PercolationSummary";
 import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
@@ -48,13 +49,11 @@ type SurfModHole = {
   comments?: string;
 };
 
-type SurfDateField = "preSoak1Date" | "preSoak2Date" | "testDate";
-
 interface SurfacePercProps {
   // Step 1-3: Surface percolation test holes
   surfHoles: SurfHole[];
+  /** Editing hole 1 also pre-fills holes 2 and 3 (see copyHoleOne). */
   setSurfField: (holeIdx: number, field: keyof SurfHole, value: string) => void;
-  updateSurfDateField: (idx: number, field: SurfDateField, value: string) => void;
 
   // Step 4: Standard method
   surfStdHoles: SurfStdHole[];
@@ -83,7 +82,6 @@ export default function SurfacePercTab(props: SurfacePercProps) {
   const {
     surfHoles,
     setSurfField,
-    updateSurfDateField,
     surfStdHoles,
     setSurfStdField,
     surfStdComments,
@@ -161,11 +159,10 @@ export default function SurfacePercTab(props: SurfacePercProps) {
           <View style={styles.dateRow}>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Pre-soak 1 Date</Text>
-              <TextInput
+              <DateField
                 style={styles.input}
                 value={hole.preSoak1Date}
-                onChangeText={(v) => updateSurfDateField(hi, "preSoak1Date", v)}
-                placeholder="YYYY-MM-DD"
+                onChange={(v) => setSurfField(hi, "preSoak1Date", v)}
               />
             </View>
             <View style={styles.dateCol}>
@@ -181,11 +178,10 @@ export default function SurfacePercTab(props: SurfacePercProps) {
           <View style={styles.dateRow}>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Pre-soak 2 Date</Text>
-              <TextInput
+              <DateField
                 style={styles.input}
                 value={hole.preSoak2Date}
-                onChangeText={(v) => updateSurfDateField(hi, "preSoak2Date", v)}
-                placeholder="YYYY-MM-DD"
+                onChange={(v) => setSurfField(hi, "preSoak2Date", v)}
               />
             </View>
             <View style={styles.dateCol}>
@@ -203,11 +199,10 @@ export default function SurfacePercTab(props: SurfacePercProps) {
 
           <View style={styles.row}>
             <Text style={styles.label}>Test Date</Text>
-            <TextInput
+            <DateField
               style={styles.input}
               value={hole.testDate}
-              onChangeText={(v) => updateSurfDateField(hi, "testDate", v)}
-              placeholder="YYYY-MM-DD"
+              onChange={(v) => setSurfField(hi, "testDate", v)}
             />
           </View>
 

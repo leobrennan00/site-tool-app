@@ -44,6 +44,11 @@ export function dailyLoadLitres(pe: number): number {
   return pe * DAILY_LOAD_PER_PE_LITRES;
 }
 
+/** Discharge rate in m³/hr: the daily load spread over 24 hours (6 P.E. → 0.0375, as Enda writes it). */
+export function dischargeRateM3PerHour(pe: number): number {
+  return round(dailyLoadLitres(pe) / 1000 / 24, 5);
+}
+
 /** Rule 3 — which result band a given average subsurface percolation
  *  value (min/25mm) falls into. Null (with reason) if outside 3-90. */
 export function resultBand(ssPV: number): Suggestion<string> {

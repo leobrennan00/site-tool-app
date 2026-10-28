@@ -161,3 +161,15 @@ test('P.E. read from the comments box', async () => {
   assert.equal(parsePE('6 PE based on 4 bedroom house'), null);
   assert.equal(parsePE(''), null);
 });
+
+test('visual comment: "No none" vegetation and a lake nearby (26093)', () => {
+  const t = visualAssessmentComment({
+    landscape: 'Open countryside with a gradient to the south', groundCondition: 'Firm and dry', vegIndicators: 'No none',
+    drainageDitches: 'None', watercourses: 'None', lakes: 'Ballymacahill Lough is located ~200m south of the site',
+    waterSupply: 'Mains', privateWell: null, development: 'existing',
+  })!;
+  assert.ok(t.includes('There are no vegetative indicators of wet conditions.'));
+  assert.ok(!t.includes('No none'));
+  assert.ok(t.includes('Ballymacahill Lough is located ~200m south of the site.  There are no other surface water features close to the site.'));
+  assert.ok(t.includes('Therefore the potential target at risk is groundwater as a resource.'));
+});

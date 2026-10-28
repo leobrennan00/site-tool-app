@@ -75,7 +75,7 @@ const num = (s: string | number | null | undefined): number | null => {
   return m ? Number(m[0]) : null;
 };
 const fmtM = (n: number) => (Math.round(n * 100) / 100).toString();
-const isNone = (s: string) => !s.trim() || /^(none|no|n\/a|nil|not (noted|encountered|present)|-)\.?$/i.test(s.trim());
+const isNone = (s: string) => !s.trim() || /^(no\s+)?(none|no|n\/a|nil|not (noted|encountered|present)|-)( noted| present| visible)?\.?$/i.test(s.trim());
 const sentence = (s: string) => {
   const t = s.trim().replace(/\s+/g, ' ');
   if (!t) return '';
@@ -130,6 +130,7 @@ export function visualAssessmentComment(i: {
   vegIndicators: string;
   drainageDitches: string;
   watercourses: string;
+  lakes?: string;
   waterSupply: 'Mains' | 'Private' | 'Group' | null;
   privateWell: 'Existing well on-site' | 'To be bored on-site' | null;
   development: Development | null;
@@ -151,9 +152,12 @@ export function visualAssessmentComment(i: {
   }
   const hasDrain = !isNone(i.drainageDitches);
   const hasStream = !isNone(i.watercourses);
+  const hasLake = !isNone(i.lakes ?? '');
   if (hasDrain) { p2.push(sentence(i.drainageDitches)); targets.push('the drain'); }
   if (hasStream) { p2.push(sentence(i.watercourses)); targets.push('the stream'); }
-  if (!hasStream) p2.push(`There are no ${hasDrain ? 'other ' : ''}surface water features close to the site.`);
+  // A lake is mentioned, not made a target: whether it's far enough away is the assessor's call (Enda, 26093).
+  if (hasLake) p2.push(sentence(i.lakes ?? ''));
+  if (!hasStream) p2.push(`There are no ${hasDrain || hasLake ? 'other ' : ''}surface water features close to the site.`);
   p2.push(targets.length
     ? `Therefore the potential targets at risk are ${targets.join(', ')} and groundwater as a resource.`
     : 'Therefore the potential target at risk is groundwater as a resource.');

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, Image, StyleSheet, Pressable } from "react-native";
 import GoogleDrivePicker from "../components/GoogleDrivePicker";
 import { Brand, Font } from "@/constants/theme";
-import { Card, CardTitle, FormInput, PrimaryBtn } from "@/components/ui/kit";
+import { Card, CardTitle, FormInput, FormDate, PrimaryBtn } from "@/components/ui/kit";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { PrefixPicker } from "@/components/ui/PrefixPicker";
 
@@ -63,7 +63,7 @@ export default function SiteAssessorTab(props: SiteAssessorProps) {
         <View style={{ gap: 14 }}>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <FormInput label="Date of Report" value={assDateOfReport} onChangeText={setAssDateOfReport} placeholder="YYYY-MM-DD" />
+              <FormDate label="Date of Report" value={assDateOfReport} onChange={setAssDateOfReport} />
             </View>
             <View style={{ flex: 1 }}>
               <FormInput label="Phone" value={assPhone} onChangeText={setAssPhone} keyboardType="phone-pad" placeholder="086 000 0000" />

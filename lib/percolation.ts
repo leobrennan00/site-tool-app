@@ -181,3 +181,35 @@ export function pickPercolationValue(
   if (avgT100 > T100_UNSUITABLE) return 91;
   return avgT100 <= T100_STANDARD_MAX ? standard : modified;
 }
+
+/**
+ * Hole fields that are the same for every test hole on a site: the holes are
+ * dug to one size, pre-soaked together and filled to 400 mm together (true in
+ * all 21 of Enda's reports). The time at 300 mm differs per hole, so it isn't here.
+ */
+export const SHARED_HOLE_FIELDS = [
+  'topDepth', 'baseDepth', 'holeDepth', 'dimensions',
+  'preSoak1Date', 'preSoak1Time', 'preSoak2Date', 'preSoak2Time',
+  'testDate', 'fillTime',
+] as const;
+
+type SharedHole = { [K in (typeof SHARED_HOLE_FIELDS)[number]]?: string };
+
+/**
+ * After hole 1 is edited (`prev` → `next`), copy each changed shared field to
+ * the other holes that are still blank or still hold hole 1's old value, so a
+ * hole the assessor has given its own value keeps it. Returns `next`, updated.
+ */
+export function copyHoleOne<T extends SharedHole>(prev: T[], next: T[]): T[] {
+  if (!prev.length || !next.length) return next;
+  for (const f of SHARED_HOLE_FIELDS) {
+    const oldFirst = prev[0][f] ?? '';
+    const newFirst = next[0][f] ?? '';
+    if (oldFirst === newFirst) continue;
+    for (let i = 1; i < next.length && i < prev.length; i++) {
+      const v = prev[i][f] ?? '';
+      if (v.trim() === '' || v === oldFirst) next[i] = { ...next[i], [f]: newFirst };
+    }
+  }
+  return next;
+}

@@ -3,7 +3,7 @@ import { ScrollView, View, Text, Image, StyleSheet, Alert, ActivityIndicator, Pr
 import * as ImagePicker from "expo-image-picker";
 import { capturePhotoOffline, deletePhotoLocal, getLocalPhotosForReport, setPhotoLabel, LocalPhoto } from "../../lib/offlinePhotos";
 import { PhotoLabelSheet } from "@/components/ui/PhotoLabelSheet";
-import { PhotoLabel, normalizePhotoLabel, exifTakenAt } from "../../lib/photoLabels";
+import { PhotoLabel, normalizePhotoLabel, exifTakenAt, isSingleSlot, DEFAULT_PHOTO_LABEL } from "../../lib/photoLabels";
 import { subscribeQueueChanged } from "../../lib/syncQueue";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle } from "@/components/ui/kit";
@@ -93,6 +93,14 @@ export default function PhotosTab(props: PhotosProps) {
   const labelCurrent = async (label: PhotoLabel) => {
     const target = retag ?? tagQueue[0];
     if (!target) return;
+    // A slot holds one photo: taking a label another photo already has moves
+    // it here, and the other photo goes back to "Other" (so the report
+    // doesn't print a second "Subsurface percolation hole 2" after the grid).
+    if (isSingleSlot(label)) {
+      for (const p of photos) {
+        if (p.id !== target.id && normalizePhotoLabel(p.label) === label) await setPhotoLabel(p.id, DEFAULT_PHOTO_LABEL);
+      }
+    }
     await setPhotoLabel(target.id, label);
     if (retag) setRetag(null); else setTagQueue((q) => q.slice(1));
     await refresh();

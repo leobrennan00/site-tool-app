@@ -26,7 +26,7 @@ export function normalizePhotoLabel(raw: string | null | undefined): PhotoLabel 
   return (PHOTO_LABELS as readonly string[]).includes(String(raw)) ? (raw as PhotoLabel) : DEFAULT_PHOTO_LABEL;
 }
 
-/** Labels that take a single slot in the report (a second photo with the same label goes in "other"). */
+/** Labels that take a single slot in the report; tagging a second photo with one moves it (see photos.tsx). */
 export const isSingleSlot = (label: PhotoLabel) => label !== 'Other';
 
 /** The EXIF capture time of a picked asset as an ISO string, if the picker gave us one. */

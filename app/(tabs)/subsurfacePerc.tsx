@@ -4,6 +4,7 @@ import { Brand, Font, Shadow } from "@/constants/theme";
 import { Stopwatch } from "@/components/ui/Stopwatch";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { TimeField } from "@/components/ui/TimeField";
+import { DateField } from "@/components/ui/DateField";
 import { SuggestionNote } from "@/components/ui/SuggestionNote";
 import { HoleCheck, OverallResultCard } from "@/components/ui/PercolationSummary";
 import { standardHole, modifiedHole, t100Hole, overallResult } from "@/lib/percolation";
@@ -48,13 +49,14 @@ type ModifiedHole = {
   comments?: string;
 };
 
-type PercDateField = "preSoak1Date" | "preSoak2Date" | "testDate";
+type PercHoleField = "topDepth" | "baseDepth" | "holeDepth" | "dimensions" | "preSoak1Date" | "preSoak1Time" | "preSoak2Date" | "preSoak2Time" | "testDate" | "fillTime";
 
 interface SubsurfacePercProps {
   // Step 1-3: Percolation test holes
   percHoles: PercTestHole[];
   setPercHoles: (holes: PercTestHole[]) => void;
-  updatePercDateField: (idx: number, field: PercDateField, value: string) => void;
+  /** Sets a hole field; editing hole 1 also pre-fills holes 2 and 3 (see copyHoleOne). */
+  updatePercHoleField: (idx: number, field: PercHoleField, value: string) => void;
 
   // Step 4: Standard method
   stdHoles: StandardHole[];
@@ -83,7 +85,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
   const {
     percHoles,
     setPercHoles,
-    updatePercDateField,
+    updatePercHoleField,
     stdHoles,
     setStdHoles,
     setStdField,
@@ -117,11 +119,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
             <TextInput
               style={styles.input}
               value={hole.topDepth}
-              onChangeText={(v) => {
-                const copy = [...percHoles];
-                copy[idx].topDepth = v;
-                setPercHoles(copy);
-              }}
+              onChangeText={(v) => updatePercHoleField(idx, "topDepth", v)}
               keyboardType="numeric"
               placeholder="e.g. 250"
             />
@@ -132,11 +130,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
             <TextInput
               style={styles.input}
               value={hole.baseDepth}
-              onChangeText={(v) => {
-                const copy = [...percHoles];
-                copy[idx].baseDepth = v;
-                setPercHoles(copy);
-              }}
+              onChangeText={(v) => updatePercHoleField(idx, "baseDepth", v)}
               keyboardType="numeric"
               placeholder="e.g. 550"
             />
@@ -147,11 +141,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
             <TextInput
               style={styles.input}
               value={hole.holeDepth}
-              onChangeText={(v) => {
-                const copy = [...percHoles];
-                copy[idx].holeDepth = v;
-                setPercHoles(copy);
-              }}
+              onChangeText={(v) => updatePercHoleField(idx, "holeDepth", v)}
               keyboardType="numeric"
               placeholder="e.g. 300"
             />
@@ -162,11 +152,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
             <TextInput
               style={styles.input}
               value={hole.dimensions}
-              onChangeText={(v) => {
-                const copy = [...percHoles];
-                copy[idx].dimensions = v;
-                setPercHoles(copy);
-              }}
+              onChangeText={(v) => updatePercHoleField(idx, "dimensions", v)}
               placeholder="e.g. 300 × 300"
             />
           </View>
@@ -177,11 +163,10 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
           <View style={styles.dateRow}>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Pre-soak 1 Date</Text>
-              <TextInput
+              <DateField
                 style={styles.input}
                 value={hole.preSoak1Date}
-                onChangeText={(v) => updatePercDateField(idx, "preSoak1Date", v)}
-                placeholder="YYYY-MM-DD"
+                onChange={(v) => updatePercHoleField(idx, "preSoak1Date", v)}
               />
             </View>
             <View style={styles.dateCol}>
@@ -189,11 +174,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               <TimeField
                 style={styles.input}
                 value={hole.preSoak1Time}
-                onChange={(v) => {
-                  const copy = [...percHoles];
-                  copy[idx].preSoak1Time = v;
-                  setPercHoles(copy);
-                }}
+                onChange={(v) => updatePercHoleField(idx, "preSoak1Time", v)}
               />
             </View>
           </View>
@@ -201,11 +182,10 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
           <View style={styles.dateRow}>
             <View style={styles.dateCol}>
               <Text style={styles.label}>Pre-soak 2 Date</Text>
-              <TextInput
+              <DateField
                 style={styles.input}
                 value={hole.preSoak2Date}
-                onChangeText={(v) => updatePercDateField(idx, "preSoak2Date", v)}
-                placeholder="YYYY-MM-DD"
+                onChange={(v) => updatePercHoleField(idx, "preSoak2Date", v)}
               />
             </View>
             <View style={styles.dateCol}>
@@ -213,11 +193,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               <TimeField
                 style={styles.input}
                 value={hole.preSoak2Time}
-                onChange={(v) => {
-                  const copy = [...percHoles];
-                  copy[idx].preSoak2Time = v;
-                  setPercHoles(copy);
-                }}
+                onChange={(v) => updatePercHoleField(idx, "preSoak2Time", v)}
               />
             </View>
           </View>
@@ -227,11 +203,10 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
 
           <View style={styles.row}>
             <Text style={styles.label}>Test Date</Text>
-            <TextInput
+            <DateField
               style={styles.input}
               value={hole.testDate}
-              onChangeText={(v) => updatePercDateField(idx, "testDate", v)}
-              placeholder="YYYY-MM-DD"
+              onChange={(v) => updatePercHoleField(idx, "testDate", v)}
             />
           </View>
 
@@ -241,11 +216,7 @@ export default function SubsurfacePercTab(props: SubsurfacePercProps) {
               <TimeField
                 style={styles.input}
                 value={hole.fillTime}
-                onChange={(v) => {
-                  const copy = [...percHoles];
-                  copy[idx].fillTime = v;
-                  setPercHoles(copy);
-                }}
+                onChange={(v) => updatePercHoleField(idx, "fillTime", v)}
               />
             </View>
             <View style={styles.dateCol}>
