@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, View, Text, Image, Pressable, StyleSheet, LayoutChangeEvent } from 'react-native';
+import { Modal, View, Text, Image, Pressable, StyleSheet, LayoutChangeEvent, Platform } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, cancelAnimation,
@@ -137,7 +137,9 @@ export function ZoomableImageViewer({ visible, uri, title, onClose }: Props) {
         </GestureDetector>
 
         <Text style={[styles.help, { paddingBottom: insets.bottom + 12 }]}>
-          Pinch to zoom · drag to move · double-tap to zoom in/out
+          {Platform.OS === 'web'
+            ? 'Double-click to zoom in/out · drag to move'
+            : 'Pinch to zoom · drag to move · double-tap to zoom in/out'}
         </Text>
       </GestureHandlerRootView>
     </Modal>

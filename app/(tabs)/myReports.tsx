@@ -3,12 +3,13 @@ import {
   ScrollView, View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { getUserReports, deleteReport, Report } from '../../lib/reports';
-import { pullNewReportsFromServer } from '../../lib/offlineReports';
 import { processQueue } from '../../lib/syncProcessor';
 import { isOnline } from '../../lib/network';
 import { Brand, Font, Shadow } from '@/constants/theme';
 import { ProgressRing, StatusPill, GradientHero } from '@/components/ui/kit';
 import { IcoChevronRight, IcoPlus, IcoTrash } from '@/components/ui/icons';
+import { useIsDesktop } from '@/hooks/useLayout';
+import { DesktopReports } from '@/components/web/DesktopReports';
 
 interface MyReportsProps {
   onLoadReport: (report: Report) => void;
@@ -53,6 +54,7 @@ export default function MyReportsTab(props: MyReportsProps) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const desktop = useIsDesktop();
 
   useEffect(() => { loadReports(); }, []);
 
@@ -75,8 +77,8 @@ export default function MyReportsTab(props: MyReportsProps) {
     // this device's pending changes, before re-reading the (now up to date)
     // local list. Silently skipped offline — the local list is already
     // what's shown, same as on a normal load.
+    // (processQueue pulls first, then pushes.)
     if (isOnline()) {
-      await pullNewReportsFromServer().catch(() => {});
       await processQueue().catch(() => {});
     }
     await loadReports();
@@ -104,6 +106,31 @@ export default function MyReportsTab(props: MyReportsProps) {
   function formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  const titleOf = (report: Report) => {
+    const ci = report.client_info || {};
+    return report.site_name && report.site_name !== 'Untitled Report'
+      ? report.site_name
+      : `${ci.firstName || ''} ${ci.surname || ''}`.trim() || 'Untitled Report';
+  };
+
+  if (desktop) {
+    return (
+      <DesktopReports
+        loading={loading}
+        rows={reports.map((report) => ({
+          report,
+          // Client first, as on the report overview; the location is the line below.
+          title: `${report.client_info?.firstName || ''} ${report.client_info?.surname || ''}`.trim() || titleOf(report),
+          location: report.client_info?.siteLocation || '',
+          percent: computeProgress(report),
+        }))}
+        onOpen={onLoadReport}
+        onNew={onNewReport}
+        onDelete={handleDelete}
+      />
+    );
   }
 
   if (loading) {
@@ -147,9 +174,7 @@ export default function MyReportsTab(props: MyReportsProps) {
           const percent = computeProgress(report);
           const ci = report.client_info || {};
           const location = ci.siteLocation || '';
-          const title = report.site_name && report.site_name !== 'Untitled Report'
-            ? report.site_name
-            : `${ci.firstName || ''} ${ci.surname || ''}`.trim() || 'Untitled Report';
+          const title = titleOf(report);
           return (
             <Pressable
               key={report.id}

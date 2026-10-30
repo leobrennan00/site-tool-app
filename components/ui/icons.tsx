@@ -106,6 +106,31 @@ export function IcoTrash({ size = 20, color = Brand.danger, strokeWidth = 1.8 }:
   );
 }
 
+export function IcoCalendar({ size = 20, color = Brand.textSub, strokeWidth = 1.8 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2zM3 10h18M8 3v4M16 3v4" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+export function IcoSearch({ size = 20, color = Brand.textMuted, strokeWidth = 1.8 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={11} cy={11} r={7} stroke={color} strokeWidth={strokeWidth} />
+      <Path d="M20 20l-3.5-3.5" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IcoDownload({ size = 20, color = '#fff', strokeWidth = 1.9 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 /** White leaf brandmark (login + sidebar). */
 export function IcoLeaf({ size = 36, color = '#fff' }: { size?: number; color?: string }) {
   return (

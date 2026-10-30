@@ -6,7 +6,6 @@
 // the queue actually gets flushed. Signatures are unchanged from before so
 // existing call sites (loadReport, handleNewReport, MyReportsTab, …) didn't
 // need to change.
-import { getDb } from './db';
 import {
   createReportOffline,
   deleteReportOffline,
@@ -34,6 +33,8 @@ export interface Report {
   site_assessor: any;
   photo_urls: string[];
   map_urls: string[];
+  /** What each uploaded photo shows (lib/photoLabels.ts PhotoMeta). */
+  photo_meta: Record<string, { label: string; taken_at: string | null }>;
   pdf_url: string | null;
   created_at: string;
   updated_at: string;
@@ -75,18 +76,6 @@ export async function deleteReport(reportId: string): Promise<{ error: any }> {
 
 export async function completeReport(reportId: string): Promise<{ error: any }> {
   return completeReportOffline(reportId);
-}
-
-export async function updateSiteName(reportId: string, siteName: string): Promise<{ error: any }> {
-  const db = await getDb();
-  await db.runAsync(`UPDATE reports SET site_name = ?, dirty = 1, updated_at = ? WHERE id = ?`, [
-    siteName,
-    new Date().toISOString(),
-    reportId,
-  ]);
-  const { enqueue } = await import('./syncQueue');
-  await enqueue('report_upsert', {}, reportId);
-  return { error: null };
 }
 
 // Re-exported for screens that want to save specific sections directly

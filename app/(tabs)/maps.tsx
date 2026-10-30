@@ -5,7 +5,7 @@ import { Card, CardTitle, PrimaryBtn, InfoBanner, ProgressBar } from "@/componen
 import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
 import { mapKey, LocalMapIndex } from "@/lib/offlineMaps";
 
-const API_BASE = "http://192.168.1.35:8000";
+import { API_BASE } from "@/lib/apiBase";
 
 interface MapsProps {
   lat: string;
@@ -224,7 +224,7 @@ export default function MapsTab(props: MapsProps) {
                 >
                   <Image source={{ uri: imageUri }} style={styles.mapImage} resizeMode="contain" />
                   <View style={styles.zoomBadge}>
-                    <Text style={styles.zoomBadgeText}>Tap to zoom</Text>
+                    <Text style={styles.zoomBadgeText}>{Platform.OS === "web" ? "Click to zoom" : "Tap to zoom"}</Text>
                   </View>
                 </Pressable>
                 {description ? (

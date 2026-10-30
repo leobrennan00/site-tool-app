@@ -35,3 +35,28 @@ export function exifTakenAt(exif: Record<string, any> | null | undefined): strin
   const m = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(raw ?? ''));
   return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : null;
 }
+
+/** What one uploaded photo shows, as stored in the report's photo_meta column. */
+export interface PhotoMetaEntry {
+  label: PhotoLabel;
+  taken_at: string | null;
+}
+/** photo_meta: keyed by the photo's URL without its query string (see photoKey). */
+export type PhotoMeta = Record<string, PhotoMetaEntry>;
+
+/** A photo URL without any query string, so a cache-buster can't hide a match. */
+export function photoKey(url: string): string {
+  return String(url || '').split('?')[0];
+}
+
+/** photo_meta for these photos, in the shape every device reads. */
+export function buildPhotoMeta(photos: { url: string; label: string | null; taken_at: string | null }[]): PhotoMeta {
+  const meta: PhotoMeta = {};
+  for (const p of photos) meta[photoKey(p.url)] = { label: normalizePhotoLabel(p.label), taken_at: p.taken_at ?? null };
+  return meta;
+}
+
+/** A photo's entry in photo_meta, if it has one. */
+export function metaFor(meta: PhotoMeta | null | undefined, url: string): PhotoMetaEntry | null {
+  return (meta && meta[photoKey(url)]) || null;
+}

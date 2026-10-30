@@ -32,3 +32,41 @@ export function displayDMY(s: string | null | undefined): string {
 export function todayDMY(): string {
   return formatDMY(new Date());
 }
+
+/** Typing aid for a date box: plain digits get the slashes put in as they are
+ *  typed ("2508" → "25/08", "25082026" → "25/08/2026"); anything typed with
+ *  its own separators is left as it is for parseDMY to read. */
+export function maskDMY(text: string): string {
+  const t = text.trim();
+  if (!/^\d+$/.test(t)) return text;
+  const d = t.slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
+
+/** Typing aid for a 24-hour time box: four digits become "HH:MM" ("1030" →
+ *  "10:30"); fewer are left alone while typing, since "930" may still become
+ *  "0930". See finishHHMM for what a short entry means once the box is left. */
+export function maskHHMM(text: string): string {
+  const t = text.trim();
+  if (!/^\d+$/.test(t)) return text;
+  const d = t.slice(0, 4);
+  return d.length === 4 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
+}
+
+/** A finished time entry as "HH:MM": "930" → "09:30", "9:5" stays invalid,
+ *  "9:30" → "09:30". Null when it isn't a real time. */
+export function finishHHMM(text: string): string | null {
+  const t = text.trim();
+  const m = /^(\d{1,2}):?(\d{2})$/.exec(t);
+  if (!m) return null;
+  const h = +m[1], min = +m[2];
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/** "YYYY-MM-DD" (what a browser date input uses) for a Date, local time. */
+export function formatISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

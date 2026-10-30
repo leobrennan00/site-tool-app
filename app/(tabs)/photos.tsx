@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, View, Text, Image, StyleSheet, Alert, ActivityIndicator, Pressable } from "react-native";
+import { ScrollView, View, Text, Image, StyleSheet, Alert, ActivityIndicator, Pressable, Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { capturePhotoOffline, deletePhotoLocal, getLocalPhotosForReport, setPhotoLabel, LocalPhoto } from "../../lib/offlinePhotos";
 import { PhotoLabelSheet } from "@/components/ui/PhotoLabelSheet";
@@ -7,10 +7,22 @@ import { PhotoLabel, normalizePhotoLabel, exifTakenAt, isSingleSlot, DEFAULT_PHO
 import { subscribeQueueChanged } from "../../lib/syncQueue";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle } from "@/components/ui/kit";
+import { PhotoDropZone } from "@/components/ui/PhotoDropZone";
+import { useIsDesktop } from "@/hooks/useLayout";
+
+// The website uploads each photo as it's added (lib/offlinePhotos.web.ts) and
+// has no camera; its wording and buttons follow that.
+const WEB = Platform.OS === "web";
 
 interface PhotosProps {
   reportId: string | null;
   embedded?: boolean;
+}
+
+/** A picked file's own date (browsers only), as the capture-time fallback. */
+function fileDate(asset: ImagePicker.ImagePickerAsset): string | null {
+  const modified = (asset as any).file?.lastModified;
+  return modified ? new Date(modified).toISOString() : null;
 }
 
 export default function PhotosTab(props: PhotosProps) {
@@ -22,6 +34,7 @@ export default function PhotosTab(props: PhotosProps) {
   const [tagQueue, setTagQueue] = useState<LocalPhoto[]>([]);
   const [tagTotal, setTagTotal] = useState(0);
   const [retag, setRetag] = useState<LocalPhoto | null>(null);
+  const desktop = useIsDesktop();
 
   const refresh = useCallback(async () => {
     if (!reportId) { setPhotos([]); return; }
@@ -51,7 +64,11 @@ export default function PhotosTab(props: PhotosProps) {
     });
 
     if (result.canceled) return;
-    await saveAssets(result.assets);
+    await saveAssets(result.assets.map((a) => ({
+      uri: a.uri,
+      // A browser gives no EXIF; the file's date is the next best thing.
+      takenAt: exifTakenAt(a.exif as any) ?? fileDate(a),
+    })));
   };
 
   const takePhoto = async () => {
@@ -63,27 +80,29 @@ export default function PhotosTab(props: PhotosProps) {
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.8, exif: true });
     if (result.canceled) return;
-    await saveAssets(result.assets);
+    await saveAssets(result.assets.map((a) => ({ uri: a.uri, takenAt: exifTakenAt(a.exif as any) })));
   };
 
   // Saved to the device immediately, one at a time — each is safe on disk
   // (with its GPS + capture time) before we move to the next, and the actual
   // upload to Supabase happens later in the background whether we're online
   // right now or not. Then the engineer is asked what each one shows.
-  const saveAssets = async (assets: ImagePicker.ImagePickerAsset[]) => {
+  const saveAssets = async (assets: { uri: string; takenAt: string | null }[]) => {
     if (!reportId) return;
     setCapturing(true);
     try {
       const saved: LocalPhoto[] = [];
       for (const asset of assets) {
-        saved.push(await capturePhotoOffline(reportId, asset.uri, 'photo', { takenAt: exifTakenAt(asset.exif as any) }));
+        saved.push(await capturePhotoOffline(reportId, asset.uri, 'photo', { takenAt: asset.takenAt }));
       }
       await refresh();
       setTagTotal(saved.length);
       setTagQueue(saved);
     } catch (err) {
       console.error("Photo capture error:", err);
-      Alert.alert("Error", "Failed to save one or more photos to the device.");
+      Alert.alert("Error", WEB
+        ? "One or more photos couldn't be uploaded. Check your connection and try again."
+        : "Failed to save one or more photos to the device.");
     } finally {
       setCapturing(false);
     }
@@ -118,32 +137,47 @@ export default function PhotosTab(props: PhotosProps) {
   const body = (
     <Card>
       <CardTitle>Site Photos</CardTitle>
-      <Text style={styles.hint}>Photos are saved to this device immediately and uploaded automatically, included in the final PDF report after the maps.</Text>
+      <Text style={styles.hint}>
+        {WEB
+          ? "Photos upload as you add them and go in the final PDF report after the maps. Photos taken on the phone appear here once it has synced."
+          : "Photos are saved to this device immediately and uploaded automatically, included in the final PDF report after the maps."}
+      </Text>
 
       {capturing && (
         <View style={styles.uploadingContainer}>
           <ActivityIndicator size="large" color={Brand.primary} />
-          <Text style={styles.uploadingText}>Saving photos…</Text>
+          <Text style={styles.uploadingText}>{WEB ? "Uploading photos…" : "Saving photos…"}</Text>
         </View>
       )}
 
-      <Pressable onPress={takePhoto} disabled={capturing || !reportId} style={[styles.addBtn, { marginBottom: 10 }]}>
-        <Text style={styles.addBtnText}>Take Photo</Text>
-      </Pressable>
+      {WEB ? (
+        <PhotoDropZone onFiles={saveAssets} disabled={capturing || !reportId} />
+      ) : (
+        <Pressable onPress={takePhoto} disabled={capturing || !reportId} style={[styles.addBtn, { marginBottom: 10 }]}>
+          <Text style={styles.addBtnText}>Take Photo</Text>
+        </Pressable>
+      )}
       <Pressable onPress={pickPhotos} disabled={capturing || !reportId} style={styles.addBtn}>
         <Text style={styles.addBtnText}>
-          {capturing ? "Saving…" : photos.length ? `+ Add More Photos (${photos.length})` : "+ Add Site Photos"}
+          {capturing
+            ? (WEB ? "Uploading…" : "Saving…")
+            : WEB
+              ? (photos.length ? `Choose more photos (${photos.length} added)` : "Choose photos from your computer")
+              : (photos.length ? `+ Add More Photos (${photos.length})` : "+ Add Site Photos")}
         </Text>
       </Pressable>
 
       {photos.length > 0 && (
         <View style={{ marginTop: 16 }}>
-          <Text style={styles.successText}>✓ {photos.length} photo(s) saved to this device</Text>
+          <Text style={styles.successText}>
+            ✓ {photos.length} photo{photos.length === 1 ? "" : "s"} {WEB ? "in this report" : "saved to this device"}
+          </Text>
+          <View style={desktop && styles.grid}>
           {photos.map((photo) => (
-            <View key={photo.id} style={styles.photoContainer}>
-              <Image source={{ uri: photo.local_uri }} style={styles.photoImage} resizeMode="cover" />
+            <View key={photo.id} style={[styles.photoContainer, desktop && styles.gridItem]}>
+              <Image source={{ uri: photo.local_uri }} style={[styles.photoImage, desktop && styles.gridImage]} resizeMode="cover" />
               <Pressable onPress={() => setRetag(photo)} style={styles.labelBtn} accessibilityLabel="Change what this photo shows">
-                <Text style={styles.labelBtnText}>{normalizePhotoLabel(photo.label)}  ▾</Text>
+                <Text style={styles.labelBtnText} numberOfLines={1}>{normalizePhotoLabel(photo.label)}  ▾</Text>
               </Pressable>
               <View style={styles.photoRow}>
                 <View style={[styles.badge, photo.uploaded ? styles.badgeSynced : styles.badgePending]}>
@@ -157,6 +191,7 @@ export default function PhotosTab(props: PhotosProps) {
               </View>
             </View>
           ))}
+          </View>
         </View>
       )}
     </Card>
@@ -204,5 +239,8 @@ const styles = StyleSheet.create({
   removeBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: Brand.dangerTint },
   removeBtnText: { color: Brand.danger, fontFamily: Font.semibold, fontSize: 13 },
   uploadingContainer: { alignItems: "center", marginBottom: 16 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  gridItem: { width: "31.9%", marginBottom: 0 },
+  gridImage: { height: 170 },
   uploadingText: { marginTop: 8, fontSize: 14, color: Brand.textSub, fontFamily: Font.regular },
 });

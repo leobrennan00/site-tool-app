@@ -9,7 +9,7 @@ import { enqueue } from './syncQueue';
 import { uploadPhoto, uploadFile } from './storage';
 import { saveReportSections } from './offlineReports';
 import { notifyLocalChange } from './syncQueue';
-import { normalizePhotoLabel, PhotoLabel } from './photoLabels';
+import { normalizePhotoLabel, PhotoLabel, PhotoMeta, buildPhotoMeta, metaFor, photoKey } from './photoLabels';
 
 // Local-first photo capture: the full image + its GPS/timestamp is written
 // to the device immediately (survives app close / phone dying), and the
@@ -134,10 +134,13 @@ export async function getUploadedPhotoEntries(reportId: string): Promise<PhotoEn
   return rows.map((r) => ({ url: r.remote_url, label: normalizePhotoLabel(r.label), taken_at: r.taken_at }));
 }
 
-/** Change what a photo shows (works offline — it's only metadata). */
+/** Change what a photo shows (works offline — it's only metadata). An
+ *  uploaded photo's label goes to the server with the report's photo_meta. */
 export async function setPhotoLabel(photoId: string, label: PhotoLabel): Promise<void> {
   const db = await getDb();
   await db.runAsync(`UPDATE photos SET label = ? WHERE id = ?`, [label, photoId]);
+  const photo = await db.getFirstAsync<LocalPhoto>(`SELECT * FROM photos WHERE id = ?`, [photoId]);
+  if (photo?.uploaded) await resyncPhotoUrlsColumn(photo.report_id, photo.kind);
   notifyLocalChange();
 }
 
@@ -154,8 +157,72 @@ export async function getPendingPhotoCount(reportId?: string): Promise<number> {
 
 async function resyncPhotoUrlsColumn(reportId: string, kind: 'photo' | 'signature' = 'photo'): Promise<void> {
   if (kind !== 'photo') return; // only plain site photos feed report.photo_urls
-  const urls = await getUploadedPhotoUrls(reportId, 'photo');
-  await saveReportSections(reportId, { photo_urls: urls });
+  const entries = await getUploadedPhotoEntries(reportId);
+  await saveReportSections(reportId, {
+    photo_urls: entries.map((e) => e.url),
+    photo_meta: buildPhotoMeta(entries),
+  });
+}
+
+/**
+ * Brings this device's photo list for a report into line with the report's
+ * photo_urls / photo_meta after they came down from the server (photos added,
+ * removed or re-tagged on another device or on the website). Photos taken
+ * here and not uploaded yet are left alone.
+ */
+export async function reconcilePhotosFromServer(reportId: string): Promise<void> {
+  const db = await getDb();
+  const report = await db.getFirstAsync<{ photo_urls: string; photo_meta: string }>(
+    `SELECT photo_urls, photo_meta FROM reports WHERE id = ?`,
+    [reportId]
+  );
+  if (!report) return;
+  let urls: string[] = [];
+  let meta: PhotoMeta = {};
+  try { urls = JSON.parse(report.photo_urls || '[]'); } catch {}
+  try { meta = JSON.parse(report.photo_meta || '{}'); } catch {}
+
+  const rows = await db.getAllAsync<LocalPhoto>(
+    `SELECT * FROM photos WHERE report_id = ? AND kind = 'photo' AND uploaded = 1`,
+    [reportId]
+  );
+  const byKey = new Map(rows.map((r) => [photoKey(r.remote_url || ''), r]));
+  const wanted = new Set(urls.map(photoKey));
+
+  for (const row of rows) {
+    if (!row.deleted && !wanted.has(photoKey(row.remote_url || ''))) {
+      await db.runAsync(`UPDATE photos SET deleted = 1 WHERE id = ?`, [row.id]);
+    }
+  }
+  const base = Date.now();
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    const entry = metaFor(meta, url);
+    const existing = byKey.get(photoKey(url));
+    if (existing) {
+      await db.runAsync(`UPDATE photos SET deleted = 0, label = COALESCE(?, label) WHERE id = ?`, [entry?.label ?? null, existing.id]);
+      continue;
+    }
+    // Added elsewhere: shown straight from its URL (Image loads https).
+    await db.runAsync(
+      `INSERT INTO photos (id, report_id, local_uri, remote_url, latitude, longitude, taken_at, kind, label, uploaded, deleted, created_at)
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, 'photo', ?, 1, 0, ?)`,
+      [Crypto.randomUUID(), reportId, url, url, entry?.taken_at || new Date(base + i).toISOString(), entry?.label ?? null, new Date(base + i).toISOString()]
+    );
+  }
+  notifyLocalChange();
+}
+
+/** Reports whose uploaded photos were tagged before labels were synced get
+ *  their photo_meta written once, so the website sees the tags. */
+export async function backfillPhotoMeta(): Promise<void> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ id: string }>(
+    `SELECT DISTINCT r.id FROM reports r JOIN photos p ON p.report_id = r.id
+     WHERE r.deleted = 0 AND (r.photo_meta IS NULL OR r.photo_meta = '{}')
+       AND p.kind = 'photo' AND p.uploaded = 1 AND p.deleted = 0`
+  );
+  for (const r of rows) await resyncPhotoUrlsColumn(r.id, 'photo');
 }
 
 export async function deletePhotoLocal(photoId: string): Promise<void> {

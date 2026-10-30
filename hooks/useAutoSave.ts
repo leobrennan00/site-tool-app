@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { saveReportSections, SECTION_KEY_TO_COLUMN, SectionColumn } from '../lib/offlineReports';
+import { saveReportSections } from '../lib/offlineReports';
+import { SECTION_KEY_TO_COLUMN, SectionColumn, PHOTO_OWNED_COLUMNS } from '../lib/reportColumns';
 
 interface ReportData {
   clientInfo?: any;
@@ -57,13 +58,13 @@ export function useAutoSave(
 
     const changed: Partial<Record<SectionColumn, unknown>> = {};
     for (const [key, column] of Object.entries(SECTION_KEY_TO_COLUMN) as [string, SectionColumn][]) {
-      // photo_urls is owned by lib/offlinePhotos.ts — it writes the report's
-      // photo_urls column itself as each photo finishes uploading, since
-      // that column must only ever contain *uploaded* remote URLs (report
-      // generation downloads them from Supabase). Writing it here too, from
+      // photo_urls / photo_meta are owned by lib/offlinePhotos.ts — it writes
+      // them itself as each photo finishes uploading or is re-tagged, since
+      // photo_urls must only ever contain *uploaded* remote URLs (report
+      // generation downloads them from Supabase). Writing them here too, from
       // whatever's in React state, could race with that and would briefly
       // include not-yet-uploaded photos.
-      if (key === 'photoUrls') continue;
+      if (PHOTO_OWNED_COLUMNS.includes(column)) continue;
       const value = (data as any)[key] ?? (column === 'photo_urls' || column === 'map_urls' ? [] : {});
       const serialized = JSON.stringify(value);
       if (previousSectionsRef.current[column] !== serialized) {

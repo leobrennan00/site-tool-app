@@ -1,0 +1,28 @@
+// Type-checks the website build: *.web.ts(x) files replace their native
+// twins (Metro does the same when bundling for the web). Run with
+// `npx tsc --noEmit -p tsconfig.web.json`; errors reported inside
+// node_modules come from Expo's own web sources and can be ignored.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleSuffixes": [
+      ".web",
+      ""
+    ]
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "${configDir}/node_modules",
+    "${configDir}/babel.config.js",
+    "${configDir}/metro.config.js",
+    "${configDir}/jest.config.js",
+    "${configDir}/android",
+    "${configDir}/ios",
+    "${configDir}/tests"
+  ]
+}

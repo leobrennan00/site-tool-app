@@ -21,6 +21,8 @@
     "${configDir}/jest.config.js",
     "${configDir}/android",
     "${configDir}/ios",
-    "${configDir}/tests"
+    "${configDir}/tests",
+    "**/*.web.ts",
+    "**/*.web.tsx"
   ]
 }

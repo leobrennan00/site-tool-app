@@ -18,7 +18,7 @@ export const ALL_SECTIONS: SectionId[] = [
   'siteAssessor',
 ];
 
-const GROUPS: { title: string; ids: SectionId[] }[] = [
+export const SECTION_GROUPS: { title: string; ids: SectionId[] }[] = [
   { title: 'Setup', ids: ['photos'] },
   { title: 'Site Data', ids: ['clientInfo', 'deskStudy', 'visualAssessment'] },
   { title: 'Site Investigation', ids: ['trialHole', 'subsurfacePerc', 'surfacePerc'] },
@@ -71,7 +71,7 @@ export function ReportOverview({
 
         {/* Grouped sections */}
         <View style={{ padding: 16 }}>
-          {GROUPS.map((group) => (
+          {SECTION_GROUPS.map((group) => (
             <View key={group.title} style={{ marginBottom: 18 }}>
               <Text style={styles.groupLabel}>{group.title}</Text>
               <View style={styles.groupCard}>

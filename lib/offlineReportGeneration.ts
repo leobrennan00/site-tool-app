@@ -1,12 +1,6 @@
 import { getDb } from './db';
-import { getUploadedPhotoUrls } from './offlinePhotos';
-
-// Backend base URL — mirrors the __DEV__ switch in app/(tabs)/index.tsx.
-// Kept separate (rather than imported) because index.tsx's API_BASE is a
-// module-local const inside a huge screen file, not exported.
-const API_BASE = __DEV__
-  ? "http://192.168.0.51:8000"
-  : "https://web-production-133cf.up.railway.app";
+import { getUploadedPhotoEntries } from './offlinePhotos';
+import { API_BASE } from './apiBase';
 
 /**
  * Runs a "Generate report" request that was queued while offline (see
@@ -22,7 +16,8 @@ export async function runQueuedReportGeneration(payload: Record<string, any>): P
   const { __reportId, ...body } = payload;
 
   if (__reportId) {
-    body.photos = await getUploadedPhotoUrls(__reportId);
+    // With their labels, so the report lays them out as tagged.
+    body.photos = await getUploadedPhotoEntries(__reportId);
   }
 
   const res = await fetch(`${API_BASE}/generate_report_from_app`, {

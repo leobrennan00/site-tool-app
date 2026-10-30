@@ -35,7 +35,7 @@ export function developmentPhrase(d: Development | null | undefined, form: 'full
     pods: ['pods', 'pods', 'proposed pods'],
     development: ['proposed development', 'proposed development', 'proposed development'],
   };
-  const row = table[d ?? 'proposed'];
+  const row = table[d as Development] ?? table.proposed; // unknown values (older reports) read as proposed
   return row[form === 'full' ? 0 : form === 'house' ? 1 : 2];
 }
 

@@ -4,6 +4,8 @@ import { supabase } from './supabase';
 import { enqueue } from './syncQueue';
 import { isOnline } from './network';
 import type { Report } from './reports';
+import { SECTION_COLUMNS, SectionColumn, emptySection, PHOTO_OWNED_COLUMNS } from './reportColumns';
+import { jsonEqual } from './stableJson';
 
 // Local-first report storage + sync. The on-device SQLite row is the source
 // of truth for whatever the engineer is looking at; Supabase is a
@@ -11,41 +13,8 @@ import type { Report } from './reports';
 // the UI waits on. See lib/db.ts for the schema and lib/syncProcessor.ts for
 // how/when sync actually runs.
 
-export const SECTION_COLUMNS = [
-  'client_info',
-  'desk_study',
-  'visual_assessment',
-  'trial_hole',
-  'subsurface_perc',
-  'surface_perc',
-  'conclusion',
-  'selected_dwwts',
-  'treatment_systems',
-  'quality_assurance',
-  'site_assessor',
-  'photo_urls',
-  'map_urls',
-] as const;
-export type SectionColumn = (typeof SECTION_COLUMNS)[number];
-
-// Maps the camelCase section keys used by the app's ReportData shape
-// (hooks/useAutoSave.ts, app/(tabs)/index.tsx) to the snake_case DB/Supabase
-// columns above.
-export const SECTION_KEY_TO_COLUMN: Record<string, SectionColumn> = {
-  clientInfo: 'client_info',
-  deskStudy: 'desk_study',
-  visualAssessment: 'visual_assessment',
-  trialHole: 'trial_hole',
-  subsurfacePerc: 'subsurface_perc',
-  surfacePerc: 'surface_perc',
-  conclusion: 'conclusion',
-  selectedDwwts: 'selected_dwwts',
-  treatmentSystems: 'treatment_systems',
-  qualityAssurance: 'quality_assurance',
-  siteAssessor: 'site_assessor',
-  photoUrls: 'photo_urls',
-  mapUrls: 'map_urls',
-};
+export { SECTION_COLUMNS, SECTION_KEY_TO_COLUMN } from './reportColumns';
+export type { SectionColumn } from './reportColumns';
 
 interface ReportRow {
   id: string;
@@ -65,6 +34,7 @@ interface ReportRow {
   site_assessor: string;
   photo_urls: string;
   map_urls: string;
+  photo_meta: string;
   pdf_url: string | null;
   desk_study_cache: string | null;
   desk_study_status: string;
@@ -107,6 +77,7 @@ function rowToReport(row: ReportRow): Report {
     site_assessor: parseJson(row.site_assessor, {}),
     photo_urls: parseJson(row.photo_urls, []),
     map_urls: parseJson(row.map_urls, []),
+    photo_meta: parseJson(row.photo_meta, {}),
     pdf_url: row.pdf_url,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -319,27 +290,53 @@ export async function getConflictLog(limit = 50): Promise<ConflictLogEntry[]> {
   return db.getAllAsync<ConflictLogEntry>(`SELECT * FROM conflict_log ORDER BY occurred_at DESC LIMIT ?`, [limit]);
 }
 
+// Builds before photo_meta existed in Supabase would have every sync
+// rejected if we sent it to a database that hasn't had the column added
+// yet, so a "column does not exist" error drops it and tries again.
+function isMissingPhotoMeta(error: any): boolean {
+  const message = String(error?.message || '');
+  return /photo_meta/.test(message) && /column|schema/i.test(message);
+}
+function withoutPhotoMeta(payload: Record<string, any>): Record<string, any> {
+  const { photo_meta: _omit, ...rest } = payload;
+  return rest;
+}
+
+/** A section's value from a server row, or its empty value. */
+function serverSection(row: Record<string, any>, col: SectionColumn): unknown {
+  return row[col] ?? emptySection(col);
+}
+
+/** Whether a sync brought the photo columns down from the server, so the
+ *  caller can bring the device's photo list into line (see
+ *  reconcilePhotosFromServer in lib/offlinePhotos.ts). */
+export interface SyncResult {
+  photosChanged: boolean;
+}
+
 /**
  * Pushes/merges a single report with Supabase. Section-level last-write-wins:
- * for each of the 13 form sections we compare the server's current value
- * against what we last knew the server to have (server_snapshot) to see if
- * the *other* side changed it, and against our local field_timestamps to see
- * if *this device* changed it since the last sync. Only when both sides
- * changed the same section do we log a conflict and pick a winner by
- * comparing the local edit time to the server row's updated_at — every
- * other case is a clean pull or push with nothing to resolve. site_name and
- * status are simple convenience fields and always take the local value on
- * push rather than going through per-field conflict tracking.
+ * for each form section we compare the server's current value against what
+ * we last knew the server to have (server_snapshot) to see if the *other*
+ * side (another phone, or the website) changed it, and against our local
+ * field_timestamps to see if *this device* changed it since the last sync.
+ * Only when both sides changed the same section do we log a conflict and
+ * pick a winner by comparing the local edit time to the server row's
+ * updated_at — every other case is a clean pull or push with nothing to
+ * resolve. site_name and status are simple convenience fields and always
+ * take the local value on push rather than going through per-field
+ * conflict tracking.
  */
-export async function syncOneReport(reportId: string): Promise<void> {
-  if (!isOnline()) return;
+export async function syncOneReport(reportId: string): Promise<SyncResult> {
+  const none: SyncResult = { photosChanged: false };
+  if (!isOnline()) return none;
   const db = await getDb();
   const local = await db.getFirstAsync<ReportRow>(`SELECT * FROM reports WHERE id = ?`, [reportId]);
-  if (!local) return;
+  if (!local) return none;
 
   if (local.deleted) {
     await pushReportDelete(reportId);
-    return;
+    return none;
   }
 
   const { data: serverRow } = await supabase.from('reports').select('*').eq('id', reportId).maybeSingle();
@@ -357,14 +354,19 @@ export async function syncOneReport(reportId: string): Promise<void> {
       updated_at: local.updated_at,
     };
     for (const col of SECTION_COLUMNS) {
-      insertPayload[col] = parseJson((local as any)[col], col === 'photo_urls' || col === 'map_urls' ? [] : {});
+      insertPayload[col] = parseJson((local as any)[col], emptySection(col));
     }
 
-    let { error } = await supabase.from('reports').insert([insertPayload]);
-    if (error && String(error.message || '').toLowerCase().includes('foreign key')) {
-      await ensureProfileExists(local.user_id);
-      ({ error } = await supabase.from('reports').insert([insertPayload]));
-    }
+    const insert = async (payload: Record<string, any>) => {
+      let { error } = await supabase.from('reports').insert([payload]);
+      if (error && String(error.message || '').toLowerCase().includes('foreign key')) {
+        await ensureProfileExists(local.user_id);
+        ({ error } = await supabase.from('reports').insert([payload]));
+      }
+      return error;
+    };
+    let error = await insert(insertPayload);
+    if (error && isMissingPhotoMeta(error)) error = await insert(withoutPhotoMeta(insertPayload));
     if (error) throw error;
 
     const snapshot: Record<string, any> = { ...insertPayload };
@@ -372,7 +374,7 @@ export async function syncOneReport(reportId: string): Promise<void> {
       `UPDATE reports SET server_snapshot = ?, field_timestamps = '{}', dirty = 0, synced_at = ? WHERE id = ?`,
       [JSON.stringify(snapshot), new Date().toISOString(), reportId]
     );
-    return;
+    return none;
   }
 
   // Both sides exist — resolve section by section.
@@ -380,11 +382,13 @@ export async function syncOneReport(reportId: string): Promise<void> {
   const localUpdates: Record<string, any> = {};
 
   for (const col of SECTION_COLUMNS) {
-    const localVal = parseJson((local as any)[col], col === 'photo_urls' || col === 'map_urls' ? [] : {});
-    const serverVal = serverRow[col] ?? (col === 'photo_urls' || col === 'map_urls' ? [] : {});
+    const localVal = parseJson((local as any)[col], emptySection(col));
+    const serverVal = serverSection(serverRow, col);
     const knownServerVal = serverSnapshot && col in serverSnapshot ? serverSnapshot[col] : localVal;
 
-    const serverChanged = JSON.stringify(serverVal) !== JSON.stringify(knownServerVal);
+    // Key order is ignored: jsonb hands objects back in its own order, which
+    // otherwise makes every section look changed on the server.
+    const serverChanged = !jsonEqual(serverVal, knownServerVal);
     const locallyChanged = col in fieldTimestamps;
 
     if (serverChanged && locallyChanged) {
@@ -411,9 +415,13 @@ export async function syncOneReport(reportId: string): Promise<void> {
     ...resolved,
     site_name: local.site_name,
     status: local.status,
+    updated_at: new Date().toISOString(),
   };
 
-  const { error: updateError } = await supabase.from('reports').update(updatePayload).eq('id', reportId);
+  let { error: updateError } = await supabase.from('reports').update(updatePayload).eq('id', reportId);
+  if (updateError && isMissingPhotoMeta(updateError)) {
+    ({ error: updateError } = await supabase.from('reports').update(withoutPhotoMeta(updatePayload)).eq('id', reportId));
+  }
   if (updateError) throw updateError;
 
   const { data: freshServerRow } = await supabase.from('reports').select('*').eq('id', reportId).maybeSingle();
@@ -429,33 +437,61 @@ export async function syncOneReport(reportId: string): Promise<void> {
     `UPDATE reports SET ${localSetClauses.length ? localSetClauses.join(', ') + ',' : ''} server_snapshot = ?, field_timestamps = '{}', dirty = 0, synced_at = ?, updated_at = ? WHERE id = ?`,
     [...localArgs, JSON.stringify(newSnapshot), new Date().toISOString(), freshServerRow?.updated_at || local.updated_at, reportId]
   );
+  return { photosChanged: PHOTO_OWNED_COLUMNS.some((col) => col in localUpdates) };
 }
 
 /**
- * Pulls down any reports that exist on the server but not yet on this
- * device (e.g. started on another phone), inserting them locally so My
- * Reports / search stays complete offline. Does not push — pushing dirty
- * local reports is the sync processor's job via the queue.
+ * Brings the device up to date with the server: inserts reports that exist
+ * there but not here (started on another phone or on the website), and
+ * pulls in sections another device changed on reports already here.
+ * Reports with unsynced edits on this device are left alone — their queued
+ * upsert (syncOneReport) merges section by section instead. Does not push.
+ * Returns the ids of reports whose photos changed, for the caller to
+ * reconcile the device's photo list.
  */
-export async function pullNewReportsFromServer(): Promise<void> {
-  if (!isOnline()) return;
+export async function pullNewReportsFromServer(): Promise<string[]> {
+  if (!isOnline()) return [];
   const userId = await getLocalUserId();
-  if (!userId) return;
+  if (!userId) return [];
 
   const db = await getDb();
   const { data: serverReports, error } = await supabase.from('reports').select('*').eq('user_id', userId);
-  if (error || !serverReports) return;
+  if (error || !serverReports) return [];
 
-  const localIds = new Set(
-    (await db.getAllAsync<{ id: string }>(`SELECT id FROM reports WHERE user_id = ?`, [userId])).map((r) => r.id)
+  const localRows = new Map(
+    (await db.getAllAsync<ReportRow>(`SELECT * FROM reports WHERE user_id = ?`, [userId])).map((r) => [r.id, r])
   );
+  const photosChanged: string[] = [];
 
   for (const sr of serverReports) {
-    if (localIds.has(sr.id)) continue;
     const snapshot: Record<string, any> = {};
-    for (const col of SECTION_COLUMNS) snapshot[col] = sr[col];
+    for (const col of SECTION_COLUMNS) snapshot[col] = serverSection(sr, col);
     snapshot.site_name = sr.site_name;
     snapshot.status = sr.status;
+
+    const local = localRows.get(sr.id);
+    if (local) {
+      if (local.dirty || local.deleted) continue;
+      const known = local.server_snapshot ? parseJson<Record<string, any>>(local.server_snapshot, {}) : null;
+      const changed = SECTION_COLUMNS.filter((col) => {
+        const knownVal = known && col in known ? known[col] : parseJson((local as any)[col], emptySection(col));
+        return !jsonEqual(serverSection(sr, col), knownVal);
+      });
+      const metaChanged = sr.site_name !== local.site_name || sr.status !== local.status || sr.pdf_url !== local.pdf_url;
+      if (!changed.length && !metaChanged) continue;
+
+      const setClauses = changed.map((col) => `${col} = ?`);
+      const args = changed.map((col) => JSON.stringify(serverSection(sr, col)));
+      // `dirty = 0` again in the WHERE: an edit made on this device while
+      // the server copy was being fetched wins, and is merged on its next sync.
+      await db.runAsync(
+        `UPDATE reports SET ${setClauses.length ? setClauses.join(', ') + ',' : ''} site_name = ?, status = ?, pdf_url = ?,
+           server_snapshot = ?, updated_at = ?, synced_at = ? WHERE id = ? AND dirty = 0`,
+        [...args, sr.site_name, sr.status, sr.pdf_url, JSON.stringify(snapshot), sr.updated_at, new Date().toISOString(), sr.id]
+      );
+      if (changed.some((col) => PHOTO_OWNED_COLUMNS.includes(col))) photosChanged.push(sr.id);
+      continue;
+    }
 
     await db.runAsync(
       `INSERT INTO reports (
@@ -463,11 +499,11 @@ export async function pullNewReportsFromServer(): Promise<void> {
          client_info, desk_study, visual_assessment, trial_hole,
          subsurface_perc, surface_perc, conclusion, selected_dwwts,
          treatment_systems, quality_assurance, site_assessor,
-         photo_urls, map_urls, pdf_url,
+         photo_urls, map_urls, photo_meta, pdf_url,
          desk_study_cache, desk_study_status, desk_study_lat, desk_study_lon,
          field_timestamps, server_snapshot,
          created_at, updated_at, synced_at, dirty, deleted
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'none', NULL, NULL, '{}', ?, ?, ?, ?, 0, 0)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'none', NULL, NULL, '{}', ?, ?, ?, ?, 0, 0)`,
       [
         sr.id, sr.user_id, sr.status, sr.site_name,
         JSON.stringify(sr.client_info || {}), JSON.stringify(sr.desk_study || {}),
@@ -476,11 +512,13 @@ export async function pullNewReportsFromServer(): Promise<void> {
         JSON.stringify(sr.conclusion || {}), JSON.stringify(sr.selected_dwwts || {}),
         JSON.stringify(sr.treatment_systems || {}), JSON.stringify(sr.quality_assurance || {}),
         JSON.stringify(sr.site_assessor || {}), JSON.stringify(sr.photo_urls || []),
-        JSON.stringify(sr.map_urls || []), sr.pdf_url,
+        JSON.stringify(sr.map_urls || []), JSON.stringify(sr.photo_meta || {}), sr.pdf_url,
         JSON.stringify(snapshot), sr.created_at, sr.updated_at, new Date().toISOString(),
       ]
     );
+    if ((sr.photo_urls || []).length) photosChanged.push(sr.id);
   }
+  return photosChanged;
 }
 
 export async function getDirtyReportIds(): Promise<string[]> {

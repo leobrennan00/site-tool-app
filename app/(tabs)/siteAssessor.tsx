@@ -1,10 +1,14 @@
 import React, { useState } from "react";
-import { View, Text, Image, StyleSheet, Pressable } from "react-native";
+import { View, Text, Image, StyleSheet, Pressable, Platform } from "react-native";
 import GoogleDrivePicker from "../components/GoogleDrivePicker";
 import { Brand, Font } from "@/constants/theme";
 import { Card, CardTitle, FormInput, FormDate, PrimaryBtn } from "@/components/ui/kit";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { PrefixPicker } from "@/components/ui/PrefixPicker";
+
+// Google Drive picking signs in with the phone app's Google client, so the
+// website offers plans from the computer only.
+const WEB = Platform.OS === "web";
 
 interface SiteAssessorProps {
   assCompany: string; setAssCompany: (val: string) => void;
@@ -96,23 +100,27 @@ export default function SiteAssessorTab(props: SiteAssessorProps) {
         <CardTitle>Attachments</CardTitle>
         <View style={{ flexDirection: "row", gap: 10 }}>
           <Pressable onPress={pickAndUploadPlans} style={[styles.btn, styles.btnOutline, { flex: 1 }]}>
-            <Text style={styles.btnOutlineText}>From Device</Text>
+            <Text style={styles.btnOutlineText}>{WEB ? "Upload PDF plans" : "From Device"}</Text>
           </Pressable>
-          <Pressable onPress={() => setDrivePickerVisible(true)} style={[styles.btn, styles.btnFilled, { flex: 1 }]}>
-            <Text style={styles.btnFilledText}>Google Drive</Text>
-          </Pressable>
+          {!WEB && (
+            <Pressable onPress={() => setDrivePickerVisible(true)} style={[styles.btn, styles.btnFilled, { flex: 1 }]}>
+              <Text style={styles.btnFilledText}>Google Drive</Text>
+            </Pressable>
+          )}
         </View>
         {planPdfUrls.length > 0 && (
           <Text style={styles.attachedText}>{planPdfUrls.length} PDF(s) attached</Text>
         )}
-        <GoogleDrivePicker
-          visible={drivePickerVisible}
-          onClose={() => setDrivePickerVisible(false)}
-          onFilePicked={(fileId, name, token) => {
-            setDrivePickerVisible(false);
-            onDrivePlanPicked(fileId, name, token);
-          }}
-        />
+        {!WEB && (
+          <GoogleDrivePicker
+            visible={drivePickerVisible}
+            onClose={() => setDrivePickerVisible(false)}
+            onFilePicked={(fileId, name, token) => {
+              setDrivePickerVisible(false);
+              onDrivePlanPicked(fileId, name, token);
+            }}
+          />
+        )}
       </Card>
 
       <PrimaryBtn title="Generate Report" onPress={generateReport} style={{ marginTop: 4 }} />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable, Dimensions, ActivityIndicator } from "react-native";
+import { ScrollView, View, Text, TextInput, Button, Image, StyleSheet, Pressable, Dimensions, ActivityIndicator, Platform } from "react-native";
 // react-native's own SafeAreaView is iOS-only and does nothing on Android —
 // with edge-to-edge enabled in app.json the header was drawing under the
 // status bar there. This one handles notch/status bar/dynamic island on both.
@@ -63,9 +63,14 @@ import Sidebar from "./sidebar";
 import { Brand, SectionMeta } from "@/constants/theme";
 import { AppHeader } from "@/components/ui/kit";
 import { BottomTabBar } from "@/components/ui/BottomTabBar";
-import { ReportOverview, SectionId } from "@/components/ui/ReportOverview";
-import { IcoPlus } from "@/components/ui/icons";
+import { ReportOverview, SectionId, ALL_SECTIONS } from "@/components/ui/ReportOverview";
+import { DesktopShell, SectionStepper, TopBarButton } from "@/components/web/DesktopShell";
+import { DesktopOverview } from "@/components/web/DesktopOverview";
+import { useIsDesktop } from "@/hooks/useLayout";
+import { IcoPlus, IcoDownload } from "@/components/ui/icons";
 import { todayDMY } from "@/lib/dates";
+import { API_BASE } from "@/lib/apiBase";
+import { appendFile } from "@/lib/formFile";
 
 
 
@@ -74,15 +79,6 @@ const SectionHeader = ({ title }: { title: string }) => (
     <Text style={styles.sectionText}>{title}</Text>
   </View>
 );
-
-
-// API Configuration
-// Use Railway in production, local server in development
-// To test with local server: change to "http://192.168.0.51:8080"
-// To test with Railway: change to "https://web-production-133cf.up.railway.app"
-const API_BASE = __DEV__
-  ? "http://192.168.0.51:8000"  // Local development — update IP if your machine's IP changes
-  : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 
 export default function Index() {
@@ -96,6 +92,7 @@ export default function Index() {
   // signed out" once the initial check has actually completed.
   const [session, setSession] = useState<Session | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
+  const desktop = useIsDesktop();
 
   // Current report being worked on
   const [currentReportId, setCurrentReportId] = useState<string | null>(null);
@@ -403,14 +400,6 @@ export default function Index() {
 
   // 6.0 — Septic Tank Systems (Chapter 7)
   const [septTankCapacity, setSeptTankCapacity] = useState(""); // m³
-
-// API Configuration
-// Use Railway in production, local server in development
-// To test with local server: change to "http://192.168.0.51:8080"
-// To test with Railway: change to "https://web-production-133cf.up.railway.app"
-const API_BASE = __DEV__
-  ? "http://192.168.0.51:8000"  // Local development — update IP if your machine's IP changes
-  : "https://web-production-133cf.up.railway.app";  // Production (APK builds)
 
 const TANK_TYPES = [
   "Eurotank BAF2",
@@ -1410,14 +1399,7 @@ const TANK_TYPES = [
         `site_photo_${Date.now()}_${Math.floor(Math.random() * 100000)}.jpg`;
 
       const formData = new FormData();
-      formData.append(
-        "file",
-        {
-          uri: asset.uri,
-          name: fileName,
-          type: "image/jpeg",
-        } as any
-      );
+      await appendFile(formData, "file", asset.uri, fileName, "image/jpeg");
 
       const res = await fetch(`${API_BASE}/upload_photo`, {
         method: "POST",
@@ -1525,14 +1507,7 @@ const TANK_TYPES = [
         `signature_${Date.now()}_${Math.floor(Math.random() * 100000)}.png`;
 
       const formData = new FormData();
-      formData.append(
-        "file",
-        {
-          uri: asset.uri,
-          name: fileName,
-          type: "image/png",
-        } as any
-      );
+      await appendFile(formData, "file", asset.uri, fileName, "image/png");
 
       const res = await fetch(`${API_BASE}/upload_signature`, {
         method: "POST",
@@ -1586,14 +1561,7 @@ const TANK_TYPES = [
           `site_plan_${Date.now()}_${Math.floor(Math.random() * 100000)}.pdf`;
 
         const formData = new FormData();
-        formData.append(
-          "file",
-          {
-            uri: asset.uri,
-            name: fileName,
-            type: "application/pdf",
-          } as any
-        );
+        await appendFile(formData, "file", asset.uri, fileName, "application/pdf");
 
         const res = await fetch(`${API_BASE}/upload_plan_pdf`, {
           method: "POST",
@@ -1649,7 +1617,7 @@ const TANK_TYPES = [
 
       // Upload using the same { uri, name, type } format as device uploads — works reliably in RN
       const formData = new FormData();
-      formData.append("file", { uri: dl.uri, name: safeFileName, type: "application/pdf" } as any);
+      await appendFile(formData, "file", dl.uri, safeFileName, "application/pdf");
 
       const res = await fetch(`${API_BASE}/upload_plan_pdf`, { method: "POST", body: formData });
       if (!res.ok) {
@@ -2155,6 +2123,11 @@ const TANK_TYPES = [
           plans: planPdfUrls,
       };
 
+      if (!isOnline() && Platform.OS === "web") {
+        // The website has no background queue to send it later.
+        Alert.alert("No connection", "Generating the report needs an internet connection. Everything you've entered is kept in this tab; try again once you're back online.");
+        return;
+      }
       if (!isOnline()) {
         await enqueue('report_generate', { ...reportPayload, __reportId: currentReportId }, currentReportId);
         Alert.alert(
@@ -2190,8 +2163,21 @@ const TANK_TYPES = [
           message += `\n\nNote: Email sending not configured on server`;
         }
 
-        Alert.alert("Report created (Page 1)", message);
-        Linking.openURL(pdfUrl);
+        if (Platform.OS === "web") {
+          // A browser blocks a new tab opened after the request comes back,
+          // so the PDF opens from a button press instead.
+          Alert.alert(
+            "Report ready",
+            json?.email_sent ? `Emailed to ${assEmail}.` : "Your PDF report has been generated.",
+            [
+              { text: "Close", style: "cancel" },
+              { text: "Open PDF", onPress: () => { Linking.openURL(pdfUrl); } },
+            ],
+          );
+        } else {
+          Alert.alert("Report created (Page 1)", message);
+          Linking.openURL(pdfUrl);
+        }
       } else {
         Alert.alert("Report error", JSON.stringify(json, null, 2));
       }
@@ -3059,6 +3045,424 @@ const TANK_TYPES = [
     setCurrentSection(null);
   };
 
+  // The pages, shared by the phone layout and the website's desktop layout.
+  const reportsBody = (
+    <MyReportsTab
+      onLoadReport={(report) => { loadReport(report); setMainView('currentReport'); }}
+      onNewReport={() => { handleNewReport(); setMainView('currentReport'); }}
+      currentReportId={currentReportId}
+    />
+  );
+  const settingsBody = (
+    <SettingsTab
+      onClose={() => setMainView('myReports')}
+      onSave={(defaults) => {
+        setAssessorDefaults(defaults);
+        AsyncStorage.setItem(ASSESSOR_DEFAULTS_CACHE, JSON.stringify(defaults)).catch(() => {});
+      }}
+    />
+  );
+  const sectionBody = currentReportId && currentSection !== null ? (
+          <View style={{ flex: 1 }}>
+          {/* Location, Maps & Photos (combined) */}
+          {currentSection === 'photos' && (
+            <KeyboardAwareScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              <MapsTab
+                embedded
+                lat={lat}
+                setLat={setLat}
+                lon={lon}
+                setLon={setLon}
+                loading={loading && generatingKey === (currentReportId ?? "")}
+                imgErr={imgErr}
+                imgUris={imgUris}
+                mapDescriptions={mapDescriptions}
+                generateMaps={generateMaps}
+                getCurrentLocation={getCurrentLocation}
+                deskStudyStatus={deskStudyStatus}
+                localMapUris={localMapUris}
+              />
+              <PhotosTab
+                embedded
+                reportId={currentReportId}
+              />
+            </KeyboardAwareScrollView>
+          )}
+
+      {/* Show Client Info Tab */}
+      {currentTab === 'clientInfo' && (
+        <ClientInfoTab
+          fileRef={fileRef}
+          setFileRef={setFileRef}
+          prefix={prefix}
+          setPrefix={setPrefix}
+          firstName={firstName}
+          setFirstName={setFirstName}
+          surname={surname}
+          setSurname={setSurname}
+          address={address}
+          setAddress={setAddress}
+          siteLocation={siteLocation}
+          setSiteLocation={setSiteLocation}
+          bedrooms={bedrooms}
+          setBedrooms={setBedrooms}
+          residents={residents}
+          setResidents={setResidents}
+          populationEquivalent={populationEquivalent}
+          setPopulationEquivalent={setPopulationEquivalent}
+          waterSupply={waterSupply}
+          setWaterSupply={setWaterSupply}
+          privateWellDetail={privateWellDetail}
+          setPrivateWellDetail={setPrivateWellDetail}
+          developmentType={developmentType}
+          setDevelopmentType={setDevelopmentType}
+        />
+      )}
+
+      {/* Show Desk Study Tab */}
+      {currentTab === 'deskStudy' && (
+        <DeskStudyTab
+          soilType={soilType}
+          setSoilType={setSoilType}
+          subsoilType={subsoilType}
+          setSubsoilType={setSubsoilType}
+          bedrockType={bedrockType}
+          setBedrockType={setBedrockType}
+          aquiferCategory={aquiferCategory}
+          setAquiferCategory={setAquiferCategory}
+          aquiferCode={aquiferCode}
+          setAquiferCode={setAquiferCode}
+          vulnerability={vulnerability}
+          setVulnerability={setVulnerability}
+          vulnerabilityGsiLabel={vulnerabilityGsiLabel}
+          gwBody={gwBody}
+          setGwBody={setGwBody}
+          gwStatus={gwStatus}
+          setGwStatus={setGwStatus}
+          nearbySupply={nearbySupply}
+          setNearbySupply={setNearbySupply}
+          spaZOC={spaZOC}
+          setSpaZOC={setSpaZOC}
+          spaSI={spaSI}
+          setSpaSI={setSpaSI}
+          spaSO={spaSO}
+          setSpaSO={setSpaSO}
+          gwProtectionResponse={gwProtectionResponse}
+          setGwProtectionResponse={setGwProtectionResponse}
+          gwprSuggested={gwprSuggestion.value}
+          gwprReason={gwprSuggestion.reason}
+          significantSites={significantSites}
+          setSignificantSites={setSignificantSites}
+          pastExperience={pastExperience}
+          setPastExperience={setPastExperience}
+          deskComments={deskComments}
+          setDeskComments={setDeskComments}
+          deskCommentsSuggestion={suggestedDeskComment}
+          pastExperienceSuggestion={suggestedPastExperience}
+          expectedRange={expectedRange}
+          setExpectedRange={setExpectedRange}
+          expectedRangeSuggestion={suggestExpectedRange(soilType)}
+        />
+      )}
+
+      {/* Show Visual Assessment Tab */}
+      {currentTab === 'visualAssessment' && (
+        <VisualAssessmentTab
+          landscapePosition={landscapePosition}
+          setLandscapePosition={setLandscapePosition}
+          slope={slope}
+          setSlope={setSlope}
+          slopeComment={slopeComment}
+          setSlopeComment={setSlopeComment}
+          houses250m={houses250m}
+          setHouses250m={setHouses250m}
+          existingLandUse={existingLandUse}
+          setExistingLandUse={setExistingLandUse}
+          vegIndicators={vegIndicators}
+          setVegIndicators={setVegIndicators}
+          gwFlowDirection={gwFlowDirection}
+          setGwFlowDirection={setGwFlowDirection}
+          groundCondition={groundCondition}
+          setGroundCondition={setGroundCondition}
+          siteBoundaries={siteBoundaries}
+          setSiteBoundaries={setSiteBoundaries}
+          roads={roads}
+          setRoads={setRoads}
+          outcrops={outcrops}
+          setOutcrops={setOutcrops}
+          ponding={ponding}
+          setPonding={setPonding}
+          lakes={lakes}
+          setLakes={setLakes}
+          beachesShellfish={beachesShellfish}
+          setBeachesShellfish={setBeachesShellfish}
+          wetlands={wetlands}
+          setWetlands={setWetlands}
+          karstFeatures={karstFeatures}
+          setKarstFeatures={setKarstFeatures}
+          watercourses={watercourses}
+          setWatercourses={setWatercourses}
+          drainageDitches={drainageDitches}
+          setDrainageDitches={setDrainageDitches}
+          springs={springs}
+          setSprings={setSprings}
+          wellsText={wellsText}
+          setWellsText={setWellsText}
+          visualComments={visualComments}
+          visualCommentsSuggestion={suggestedVisualComment}
+          setVisualComments={setVisualComments}
+        />
+      )}
+
+      {/* Show Trial Hole Tab */}
+      {currentTab === 'trialHole' && (
+        <TrialHoleTab
+          trialDepth={trialDepth}
+          setTrialDepth={setTrialDepth}
+          depthBedrock={depthBedrock}
+          setDepthBedrock={setDepthBedrock}
+          depthWaterTable={depthWaterTable}
+          setDepthWaterTable={setDepthWaterTable}
+          depthIngress={depthIngress}
+          setDepthIngress={setDepthIngress}
+          rockType={rockType}
+          setRockType={setRockType}
+          excavDate={excavDate}
+          setExcavDate={setExcavDate}
+          excavTime={excavTime}
+          setExcavTime={setExcavTime}
+          examDate={examDate}
+          setExamDate={setExamDate}
+          examTime={examTime}
+          setExamTime={setExamTime}
+          thClassificationCol={thClassificationCol}
+          setThClassificationCol={setThClassificationCol}
+          thDilatancyCol={thDilatancyCol}
+          setThDilatancyCol={setThDilatancyCol}
+          thStructureCol={thStructureCol}
+          setThStructureCol={setThStructureCol}
+          thCompactnessCol={thCompactnessCol}
+          setThCompactnessCol={setThCompactnessCol}
+          thColourCol={thColourCol}
+          setThColourCol={setThColourCol}
+          thFlowpathsCol={thFlowpathsCol}
+          soilLayers={soilLayers}
+          setSoilLayers={setSoilLayers}
+          setThFlowpathsCol={setThFlowpathsCol}
+          likelySubsurfaceP={likelySubsurfaceP}
+          setLikelySubsurfaceP={setLikelySubsurfaceP}
+          likelySurfaceP={likelySurfaceP}
+          setLikelySurfaceP={setLikelySurfaceP}
+          trialHoleEvaluation={trialHoleEvaluation}
+          trialHoleEvaluationSuggestion={suggestedTrialEval}
+          setTrialHoleEvaluation={setTrialHoleEvaluation}
+        />
+      )}
+
+      {/* Show Subsurface Percolation Tab */}
+      {currentTab === 'subsurfacePerc' && (
+        <SubsurfacePercTab
+          percHoles={percHoles}
+          setPercHoles={setPercHoles}
+          updatePercHoleField={updatePercHoleField}
+          stdHoles={stdHoles}
+          setStdHoles={setStdHoles}
+          setStdField={setStdField}
+          stdResult={stdResult}
+          step4Comments={step4Comments}
+          step4CommentsSuggestion={suggestedStep4Sub}
+          setStep4Comments={setStep4Comments}
+          modHoles={modHoles}
+          setModHoles={setModHoles}
+          setModField={setModField}
+          modResult={modResult}
+          TF_FACTORS={TF_FACTORS}
+        />
+      )}
+
+      {/* Show Surface Percolation Tab */}
+      {currentTab === 'surfacePerc' && (
+        <SurfacePercTab
+          surfHoles={surfHoles}
+          setSurfField={setSurfField}
+          surfStdHoles={surfStdHoles}
+          setSurfStdField={setSurfStdField}
+          surfStdResult={surfStdResult}
+          surfStdComments={surfStdComments}
+          surfStdCommentsSuggestion={suggestedStep4Surf}
+          setSurfStdComments={setSurfStdComments}
+          surfModHoles={surfModHoles}
+          setSurfModField={setSurfModField}
+          surfModResult={surfModResult}
+          surfaceStep5Comments={surfaceStep5Comments}
+          setSurfaceStep5Comments={setSurfaceStep5Comments}
+          SURF_TF_FACTORS={SURF_TF_FACTORS}
+        />
+      )}
+
+      {/* Show Conclusion Tab */}
+      {currentTab === 'conclusion' && (
+        <ConclusionTab
+          slopeProposed={slopeProposed}
+          setSlopeProposed={setSlopeProposed}
+          siteSlope={slope}
+          sepDistancesMet={sepDistancesMet}
+          setSepDistancesMet={setSepDistancesMet}
+          unsatDepth={unsatDepth}
+          setUnsatDepth={setUnsatDepth}
+          sPV={sPV}
+          ssPV={ssPV}
+          suitableForDevelopment={suitableForDevelopment}
+          setSuitableForDevelopment={setSuitableForDevelopment}
+          optSepticTank={optSepticTank}
+          setOptSepticTank={setOptSepticTank}
+          optSecondary={optSecondary}
+          setOptSecondary={setOptSecondary}
+          optTertiary={optTertiary}
+          setOptTertiary={setOptTertiary}
+          dischargeRoute={dischargeRoute}
+          setDischargeRoute={setDischargeRoute}
+          setCDirty={setCDirty}
+        />
+      )}
+
+      {/* Show Selected DWWTS Tab */}
+      {currentTab === 'selectedDwwts' && (
+        <SelectedDwwtsTab
+          dwwtsInstall={dwwtsInstall}
+          setDwwtsInstall={setDwwtsInstall}
+          dwwtsDischargeTo={dwwtsDischargeTo}
+          setDwwtsDischargeTo={setDwwtsDischargeTo}
+          invertLevel={invertLevel}
+          setInvertLevel={setInvertLevel}
+          siteSpecificConditions={siteSpecificConditions}
+          setSiteSpecificConditions={setSiteSpecificConditions}
+          siteSpecificConditionsHint={paragraphReason}
+          siteSpecificConditionsSuggestion={suggestedParagraph}
+          polishingConstruction={polishingConstruction}
+          setPolishingConstruction={setPolishingConstruction}
+          constructionSuggestion={constructionSuggestion}
+          treatmentUnit={treatmentUnit}
+          setTreatmentUnit={setTreatmentUnit}
+        />
+      )}
+
+      {/* Show Treatment Systems Tab */}
+      {currentTab === 'treatmentSystems' && (
+        <TreatmentSystemsTab
+          septTankCapacity={septTankCapacity}
+          setSeptTankCapacity={setSeptTankCapacity}
+          septPercNoTrenches={septPercNoTrenches}
+          setSeptPercNoTrenches={setSeptPercNoTrenches}
+          septPercLenTrenches={septPercLenTrenches}
+          setSeptPercLenTrenches={setSeptPercLenTrenches}
+          septPercInvertLevel={septPercInvertLevel}
+          setSeptPercInvertLevel={setSeptPercInvertLevel}
+          septMoundNoTrenches={septMoundNoTrenches}
+          setSeptMoundNoTrenches={setSeptMoundNoTrenches}
+          septMoundLenTrenches={septMoundLenTrenches}
+          setSeptMoundLenTrenches={setSeptMoundLenTrenches}
+          septMoundInvertLevel={septMoundInvertLevel}
+          setSeptMoundInvertLevel={setSeptMoundInvertLevel}
+          secSandSoil={secSandSoil}
+          setSecSandSoil={setSecSandSoil}
+          secSoil={secSoil}
+          setSecSoil={setSecSoil}
+          secWetland={secWetland}
+          setSecWetland={setSecWetland}
+          secOther={secOther}
+          setSecOther={setSecOther}
+          packagedType={packagedType}
+          setPackagedType={setPackagedType}
+          packagedPE={packagedPE}
+          setPackagedPE={setPackagedPE}
+          primaryCompartment={primaryCompartment}
+          setPrimaryCompartment={setPrimaryCompartment}
+          tankModalVisible={tankModalVisible}
+          setTankModalVisible={setTankModalVisible}
+          TANK_TYPES={TANK_TYPES}
+          pfSurfaceArea={pfSurfaceArea}
+          setPfSurfaceArea={setPfSurfaceArea}
+          optDirectArea={optDirectArea}
+          setOptDirectArea={setOptDirectArea}
+          optPumpedArea={optPumpedArea}
+          setOptPumpedArea={setOptPumpedArea}
+          optGravityLength={optGravityLength}
+          setOptGravityLength={setOptGravityLength}
+          optLowPressureLength={optLowPressureLength}
+          setOptLowPressureLength={setOptLowPressureLength}
+          optDripArea={optDripArea}
+          setOptDripArea={setOptDripArea}
+          tertiaryPurpose={tertiaryPurpose}
+          setTertiaryPurpose={setTertiaryPurpose}
+          tertiaryPerformance={tertiaryPerformance}
+          setTertiaryPerformance={setTertiaryPerformance}
+          tertiaryDesign={tertiaryDesign}
+          setTertiaryDesign={setTertiaryDesign}
+          dischargeChoice={dischargeChoice}
+          setDischargeChoice={setDischargeChoice}
+          hydraulicLoadingRate={hydraulicLoadingRate}
+          setHydraulicLoadingRate={setHydraulicLoadingRate}
+          surfaceAreaM2={surfaceAreaM2}
+          setSurfaceAreaM2={setSurfaceAreaM2}
+          dischargeRateM3hr={dischargeRateM3hr}
+          setDischargeRateM3hr={setDischargeRateM3hr}
+          filterAreaHint={filterAreaSuggestion.reason}
+          trenchHint={polishTrenchSuggestion.reason}
+          septicTrenchHint={septicTrenchSuggestion.reason}
+          loadingRateHint={loadingRateSuggestion.reason}
+        />
+      )}
+
+      {/* Show Quality Assurance Tab */}
+      {currentTab === 'qualityAssurance' && (
+        <QualityAssuranceTab
+          qaInstall={qaInstall}
+          setQaInstall={setQaInstall}
+          qaMaintenance={qaMaintenance}
+          setQaMaintenance={setQaMaintenance}
+          qaInstallSuggestion={suggestedQaInstall}
+          qaMaintenanceSuggestion={suggestedQaMaintenance}
+        />
+      )}
+
+      {/* Show Site Assessor Tab */}
+      {currentTab === 'siteAssessor' && (
+        <SiteAssessorTab
+          assCompany={assCompany}
+          setAssCompany={setAssCompany}
+          assPrefix={assPrefix}
+          setAssPrefix={setAssPrefix}
+          assFirst={assFirst}
+          setAssFirst={setAssFirst}
+          assSurname={assSurname}
+          setAssSurname={setAssSurname}
+          assAddress={assAddress}
+          setAssAddress={setAssAddress}
+          assQuals={assQuals}
+          setAssQuals={setAssQuals}
+          assDateOfReport={assDateOfReport}
+          setAssDateOfReport={setAssDateOfReport}
+          assPhone={assPhone}
+          setAssPhone={setAssPhone}
+          assEmail={assEmail}
+          setAssEmail={setAssEmail}
+          assIndemnity={assIndemnity}
+          setAssIndemnity={setAssIndemnity}
+          signatureUrl={signatureUrl}
+          pickAndUploadSignature={pickAndUploadSignature}
+          generateSignature={generateSignature}
+          API_BASE={API_BASE}
+          planPdfUrls={planPdfUrls}
+          pickAndUploadPlans={pickAndUploadPlans}
+          onDrivePlanPicked={onDrivePlanPicked}
+          generateReport={generateReport}
+        />
+      )}
+          </View>
+  ) : null;
+  const reportTitle = (firstName || surname) ? `${firstName} ${surname}`.trim() : (siteLocation || 'Untitled Report');
+
   // Wait for the initial (local, offline-safe) session check before deciding
   // whether to show the app or the login screen — see `sessionChecked` above.
   if (!sessionChecked) {
@@ -3073,6 +3477,65 @@ const TANK_TYPES = [
   // never because of a network blip (see lib/supabase.ts / sessionChecked).
   if (!session) {
     return <Auth />;
+  }
+
+  // Website on a desktop-sized window: sidebar + top bar around the same pages.
+  if (desktop) {
+    const reportOpen = mainView === 'currentReport' && !!currentReportId;
+    const sectionLabel = currentSection ? SectionMeta[currentSection]?.label || 'Section' : null;
+    const generateBtn = (
+      <TopBarButton title="Generate PDF" onPress={handleGenerate} busy={generating} icon={<IcoDownload size={17} />} />
+    );
+    return (
+      <DesktopShell
+        view={reportOpen ? 'currentReport' : mainView === 'currentReport' ? 'myReports' : mainView}
+        onNavigate={async (v) => {
+          await flushAutoSave();
+          setMainView(v);
+        }}
+        user={{ name: session.user.user_metadata?.full_name || '', email: session.user.email || '' }}
+        onSignOut={() => {
+          Alert.alert('Sign out', 'Sign out of SiteReport on this computer?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign out', style: 'destructive', onPress: () => { supabase.auth.signOut(); } },
+          ]);
+        }}
+        report={currentReportId ? {
+          title: reportTitle,
+          location: siteLocation,
+          percent: (ALL_SECTIONS.filter((id) => sectionsComplete[id]).length / ALL_SECTIONS.length) * 100,
+          sectionsComplete,
+          section: currentSection,
+          onOpen: async (id) => {
+            await flushAutoSave();
+            if (id) openSection(id); else setCurrentSection(null);
+          },
+        } : null}
+        title={!reportOpen ? (mainView === 'settings' ? 'Settings' : 'Reports') : sectionLabel || reportTitle}
+        subtitle={!reportOpen ? (mainView === 'settings' ? 'Your details and report defaults' : 'All your site assessments') : sectionLabel ? reportTitle : 'Report overview'}
+        actions={reportOpen ? (
+          <>
+            {currentSection ? <SectionStepper section={currentSection} onOpen={async (id) => { await flushAutoSave(); openSection(id); }} /> : null}
+            {generateBtn}
+          </>
+        ) : null}
+      >
+        {!reportOpen && mainView !== 'settings' && reportsBody}
+        {!reportOpen && mainView === 'settings' && settingsBody}
+        {reportOpen && currentSection === null && (
+          <DesktopOverview
+            siteName={reportTitle}
+            location={siteLocation}
+            clientName={fullName(prefix, firstName, surname)}
+            fileRef={fileRef}
+            status={currentReportStatus}
+            sectionsComplete={sectionsComplete}
+            onOpenSection={openSection}
+          />
+        )}
+        {reportOpen && sectionBody}
+      </DesktopShell>
+    );
   }
 
 return (
@@ -3100,11 +3563,7 @@ return (
           }
         />
         <View style={{ flex: 1 }}>
-          <MyReportsTab
-            onLoadReport={(report) => { loadReport(report); setMainView('currentReport'); }}
-            onNewReport={() => { handleNewReport(); setMainView('currentReport'); }}
-            currentReportId={currentReportId}
-          />
+          {reportsBody}
         </View>
       </>
     )}
@@ -3114,13 +3573,7 @@ return (
       <>
         <AppHeader title="Settings" onBack={() => setMainView('myReports')} />
         <View style={{ flex: 1 }}>
-          <SettingsTab
-            onClose={() => setMainView('myReports')}
-            onSave={(defaults) => {
-              setAssessorDefaults(defaults);
-              AsyncStorage.setItem(ASSESSOR_DEFAULTS_CACHE, JSON.stringify(defaults)).catch(() => {});
-            }}
-          />
+          {settingsBody}
         </View>
       </>
     )}
@@ -3156,403 +3609,7 @@ return (
           onRightPress={saveAndCloseSection}
         />
 
-        <View style={{ flex: 1 }}>
-        {/* Location, Maps & Photos (combined) */}
-        {currentSection === 'photos' && (
-          <KeyboardAwareScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-            <MapsTab
-              embedded
-              lat={lat}
-              setLat={setLat}
-              lon={lon}
-              setLon={setLon}
-              loading={loading && generatingKey === (currentReportId ?? "")}
-              imgErr={imgErr}
-              imgUris={imgUris}
-              mapDescriptions={mapDescriptions}
-              generateMaps={generateMaps}
-              getCurrentLocation={getCurrentLocation}
-              deskStudyStatus={deskStudyStatus}
-              localMapUris={localMapUris}
-            />
-            <PhotosTab
-              embedded
-              reportId={currentReportId}
-            />
-          </KeyboardAwareScrollView>
-        )}
-
-    {/* Show Client Info Tab */}
-    {currentTab === 'clientInfo' && (
-      <ClientInfoTab
-        fileRef={fileRef}
-        setFileRef={setFileRef}
-        prefix={prefix}
-        setPrefix={setPrefix}
-        firstName={firstName}
-        setFirstName={setFirstName}
-        surname={surname}
-        setSurname={setSurname}
-        address={address}
-        setAddress={setAddress}
-        siteLocation={siteLocation}
-        setSiteLocation={setSiteLocation}
-        bedrooms={bedrooms}
-        setBedrooms={setBedrooms}
-        residents={residents}
-        setResidents={setResidents}
-        populationEquivalent={populationEquivalent}
-        setPopulationEquivalent={setPopulationEquivalent}
-        waterSupply={waterSupply}
-        setWaterSupply={setWaterSupply}
-        privateWellDetail={privateWellDetail}
-        setPrivateWellDetail={setPrivateWellDetail}
-        developmentType={developmentType}
-        setDevelopmentType={setDevelopmentType}
-      />
-    )}
-
-    {/* Show Desk Study Tab */}
-    {currentTab === 'deskStudy' && (
-      <DeskStudyTab
-        soilType={soilType}
-        setSoilType={setSoilType}
-        subsoilType={subsoilType}
-        setSubsoilType={setSubsoilType}
-        bedrockType={bedrockType}
-        setBedrockType={setBedrockType}
-        aquiferCategory={aquiferCategory}
-        setAquiferCategory={setAquiferCategory}
-        aquiferCode={aquiferCode}
-        setAquiferCode={setAquiferCode}
-        vulnerability={vulnerability}
-        setVulnerability={setVulnerability}
-        vulnerabilityGsiLabel={vulnerabilityGsiLabel}
-        gwBody={gwBody}
-        setGwBody={setGwBody}
-        gwStatus={gwStatus}
-        setGwStatus={setGwStatus}
-        nearbySupply={nearbySupply}
-        setNearbySupply={setNearbySupply}
-        spaZOC={spaZOC}
-        setSpaZOC={setSpaZOC}
-        spaSI={spaSI}
-        setSpaSI={setSpaSI}
-        spaSO={spaSO}
-        setSpaSO={setSpaSO}
-        gwProtectionResponse={gwProtectionResponse}
-        setGwProtectionResponse={setGwProtectionResponse}
-        gwprSuggested={gwprSuggestion.value}
-        gwprReason={gwprSuggestion.reason}
-        significantSites={significantSites}
-        setSignificantSites={setSignificantSites}
-        pastExperience={pastExperience}
-        setPastExperience={setPastExperience}
-        deskComments={deskComments}
-        setDeskComments={setDeskComments}
-        deskCommentsSuggestion={suggestedDeskComment}
-        pastExperienceSuggestion={suggestedPastExperience}
-        expectedRange={expectedRange}
-        setExpectedRange={setExpectedRange}
-        expectedRangeSuggestion={suggestExpectedRange(soilType)}
-      />
-    )}
-
-    {/* Show Visual Assessment Tab */}
-    {currentTab === 'visualAssessment' && (
-      <VisualAssessmentTab
-        landscapePosition={landscapePosition}
-        setLandscapePosition={setLandscapePosition}
-        slope={slope}
-        setSlope={setSlope}
-        slopeComment={slopeComment}
-        setSlopeComment={setSlopeComment}
-        houses250m={houses250m}
-        setHouses250m={setHouses250m}
-        existingLandUse={existingLandUse}
-        setExistingLandUse={setExistingLandUse}
-        vegIndicators={vegIndicators}
-        setVegIndicators={setVegIndicators}
-        gwFlowDirection={gwFlowDirection}
-        setGwFlowDirection={setGwFlowDirection}
-        groundCondition={groundCondition}
-        setGroundCondition={setGroundCondition}
-        siteBoundaries={siteBoundaries}
-        setSiteBoundaries={setSiteBoundaries}
-        roads={roads}
-        setRoads={setRoads}
-        outcrops={outcrops}
-        setOutcrops={setOutcrops}
-        ponding={ponding}
-        setPonding={setPonding}
-        lakes={lakes}
-        setLakes={setLakes}
-        beachesShellfish={beachesShellfish}
-        setBeachesShellfish={setBeachesShellfish}
-        wetlands={wetlands}
-        setWetlands={setWetlands}
-        karstFeatures={karstFeatures}
-        setKarstFeatures={setKarstFeatures}
-        watercourses={watercourses}
-        setWatercourses={setWatercourses}
-        drainageDitches={drainageDitches}
-        setDrainageDitches={setDrainageDitches}
-        springs={springs}
-        setSprings={setSprings}
-        wellsText={wellsText}
-        setWellsText={setWellsText}
-        visualComments={visualComments}
-        visualCommentsSuggestion={suggestedVisualComment}
-        setVisualComments={setVisualComments}
-      />
-    )}
-
-    {/* Show Trial Hole Tab */}
-    {currentTab === 'trialHole' && (
-      <TrialHoleTab
-        trialDepth={trialDepth}
-        setTrialDepth={setTrialDepth}
-        depthBedrock={depthBedrock}
-        setDepthBedrock={setDepthBedrock}
-        depthWaterTable={depthWaterTable}
-        setDepthWaterTable={setDepthWaterTable}
-        depthIngress={depthIngress}
-        setDepthIngress={setDepthIngress}
-        rockType={rockType}
-        setRockType={setRockType}
-        excavDate={excavDate}
-        setExcavDate={setExcavDate}
-        excavTime={excavTime}
-        setExcavTime={setExcavTime}
-        examDate={examDate}
-        setExamDate={setExamDate}
-        examTime={examTime}
-        setExamTime={setExamTime}
-        thClassificationCol={thClassificationCol}
-        setThClassificationCol={setThClassificationCol}
-        thDilatancyCol={thDilatancyCol}
-        setThDilatancyCol={setThDilatancyCol}
-        thStructureCol={thStructureCol}
-        setThStructureCol={setThStructureCol}
-        thCompactnessCol={thCompactnessCol}
-        setThCompactnessCol={setThCompactnessCol}
-        thColourCol={thColourCol}
-        setThColourCol={setThColourCol}
-        thFlowpathsCol={thFlowpathsCol}
-        soilLayers={soilLayers}
-        setSoilLayers={setSoilLayers}
-        setThFlowpathsCol={setThFlowpathsCol}
-        likelySubsurfaceP={likelySubsurfaceP}
-        setLikelySubsurfaceP={setLikelySubsurfaceP}
-        likelySurfaceP={likelySurfaceP}
-        setLikelySurfaceP={setLikelySurfaceP}
-        trialHoleEvaluation={trialHoleEvaluation}
-        trialHoleEvaluationSuggestion={suggestedTrialEval}
-        setTrialHoleEvaluation={setTrialHoleEvaluation}
-      />
-    )}
-
-    {/* Show Subsurface Percolation Tab */}
-    {currentTab === 'subsurfacePerc' && (
-      <SubsurfacePercTab
-        percHoles={percHoles}
-        setPercHoles={setPercHoles}
-        updatePercHoleField={updatePercHoleField}
-        stdHoles={stdHoles}
-        setStdHoles={setStdHoles}
-        setStdField={setStdField}
-        stdResult={stdResult}
-        step4Comments={step4Comments}
-        step4CommentsSuggestion={suggestedStep4Sub}
-        setStep4Comments={setStep4Comments}
-        modHoles={modHoles}
-        setModHoles={setModHoles}
-        setModField={setModField}
-        modResult={modResult}
-        TF_FACTORS={TF_FACTORS}
-      />
-    )}
-
-    {/* Show Surface Percolation Tab */}
-    {currentTab === 'surfacePerc' && (
-      <SurfacePercTab
-        surfHoles={surfHoles}
-        setSurfField={setSurfField}
-        surfStdHoles={surfStdHoles}
-        setSurfStdField={setSurfStdField}
-        surfStdResult={surfStdResult}
-        surfStdComments={surfStdComments}
-        surfStdCommentsSuggestion={suggestedStep4Surf}
-        setSurfStdComments={setSurfStdComments}
-        surfModHoles={surfModHoles}
-        setSurfModField={setSurfModField}
-        surfModResult={surfModResult}
-        surfaceStep5Comments={surfaceStep5Comments}
-        setSurfaceStep5Comments={setSurfaceStep5Comments}
-        SURF_TF_FACTORS={SURF_TF_FACTORS}
-      />
-    )}
-
-    {/* Show Conclusion Tab */}
-    {currentTab === 'conclusion' && (
-      <ConclusionTab
-        slopeProposed={slopeProposed}
-        setSlopeProposed={setSlopeProposed}
-        siteSlope={slope}
-        sepDistancesMet={sepDistancesMet}
-        setSepDistancesMet={setSepDistancesMet}
-        unsatDepth={unsatDepth}
-        setUnsatDepth={setUnsatDepth}
-        sPV={sPV}
-        ssPV={ssPV}
-        suitableForDevelopment={suitableForDevelopment}
-        setSuitableForDevelopment={setSuitableForDevelopment}
-        optSepticTank={optSepticTank}
-        setOptSepticTank={setOptSepticTank}
-        optSecondary={optSecondary}
-        setOptSecondary={setOptSecondary}
-        optTertiary={optTertiary}
-        setOptTertiary={setOptTertiary}
-        dischargeRoute={dischargeRoute}
-        setDischargeRoute={setDischargeRoute}
-        setCDirty={setCDirty}
-      />
-    )}
-
-    {/* Show Selected DWWTS Tab */}
-    {currentTab === 'selectedDwwts' && (
-      <SelectedDwwtsTab
-        dwwtsInstall={dwwtsInstall}
-        setDwwtsInstall={setDwwtsInstall}
-        dwwtsDischargeTo={dwwtsDischargeTo}
-        setDwwtsDischargeTo={setDwwtsDischargeTo}
-        invertLevel={invertLevel}
-        setInvertLevel={setInvertLevel}
-        siteSpecificConditions={siteSpecificConditions}
-        setSiteSpecificConditions={setSiteSpecificConditions}
-        siteSpecificConditionsHint={paragraphReason}
-        siteSpecificConditionsSuggestion={suggestedParagraph}
-        polishingConstruction={polishingConstruction}
-        setPolishingConstruction={setPolishingConstruction}
-        constructionSuggestion={constructionSuggestion}
-        treatmentUnit={treatmentUnit}
-        setTreatmentUnit={setTreatmentUnit}
-      />
-    )}
-
-    {/* Show Treatment Systems Tab */}
-    {currentTab === 'treatmentSystems' && (
-      <TreatmentSystemsTab
-        septTankCapacity={septTankCapacity}
-        setSeptTankCapacity={setSeptTankCapacity}
-        septPercNoTrenches={septPercNoTrenches}
-        setSeptPercNoTrenches={setSeptPercNoTrenches}
-        septPercLenTrenches={septPercLenTrenches}
-        setSeptPercLenTrenches={setSeptPercLenTrenches}
-        septPercInvertLevel={septPercInvertLevel}
-        setSeptPercInvertLevel={setSeptPercInvertLevel}
-        septMoundNoTrenches={septMoundNoTrenches}
-        setSeptMoundNoTrenches={setSeptMoundNoTrenches}
-        septMoundLenTrenches={septMoundLenTrenches}
-        setSeptMoundLenTrenches={setSeptMoundLenTrenches}
-        septMoundInvertLevel={septMoundInvertLevel}
-        setSeptMoundInvertLevel={setSeptMoundInvertLevel}
-        secSandSoil={secSandSoil}
-        setSecSandSoil={setSecSandSoil}
-        secSoil={secSoil}
-        setSecSoil={setSecSoil}
-        secWetland={secWetland}
-        setSecWetland={setSecWetland}
-        secOther={secOther}
-        setSecOther={setSecOther}
-        packagedType={packagedType}
-        setPackagedType={setPackagedType}
-        packagedPE={packagedPE}
-        setPackagedPE={setPackagedPE}
-        primaryCompartment={primaryCompartment}
-        setPrimaryCompartment={setPrimaryCompartment}
-        tankModalVisible={tankModalVisible}
-        setTankModalVisible={setTankModalVisible}
-        TANK_TYPES={TANK_TYPES}
-        pfSurfaceArea={pfSurfaceArea}
-        setPfSurfaceArea={setPfSurfaceArea}
-        optDirectArea={optDirectArea}
-        setOptDirectArea={setOptDirectArea}
-        optPumpedArea={optPumpedArea}
-        setOptPumpedArea={setOptPumpedArea}
-        optGravityLength={optGravityLength}
-        setOptGravityLength={setOptGravityLength}
-        optLowPressureLength={optLowPressureLength}
-        setOptLowPressureLength={setOptLowPressureLength}
-        optDripArea={optDripArea}
-        setOptDripArea={setOptDripArea}
-        tertiaryPurpose={tertiaryPurpose}
-        setTertiaryPurpose={setTertiaryPurpose}
-        tertiaryPerformance={tertiaryPerformance}
-        setTertiaryPerformance={setTertiaryPerformance}
-        tertiaryDesign={tertiaryDesign}
-        setTertiaryDesign={setTertiaryDesign}
-        dischargeChoice={dischargeChoice}
-        setDischargeChoice={setDischargeChoice}
-        hydraulicLoadingRate={hydraulicLoadingRate}
-        setHydraulicLoadingRate={setHydraulicLoadingRate}
-        surfaceAreaM2={surfaceAreaM2}
-        setSurfaceAreaM2={setSurfaceAreaM2}
-        dischargeRateM3hr={dischargeRateM3hr}
-        setDischargeRateM3hr={setDischargeRateM3hr}
-        filterAreaHint={filterAreaSuggestion.reason}
-        trenchHint={polishTrenchSuggestion.reason}
-        septicTrenchHint={septicTrenchSuggestion.reason}
-        loadingRateHint={loadingRateSuggestion.reason}
-      />
-    )}
-
-    {/* Show Quality Assurance Tab */}
-    {currentTab === 'qualityAssurance' && (
-      <QualityAssuranceTab
-        qaInstall={qaInstall}
-        setQaInstall={setQaInstall}
-        qaMaintenance={qaMaintenance}
-        setQaMaintenance={setQaMaintenance}
-        qaInstallSuggestion={suggestedQaInstall}
-        qaMaintenanceSuggestion={suggestedQaMaintenance}
-      />
-    )}
-
-    {/* Show Site Assessor Tab */}
-    {currentTab === 'siteAssessor' && (
-      <SiteAssessorTab
-        assCompany={assCompany}
-        setAssCompany={setAssCompany}
-        assPrefix={assPrefix}
-        setAssPrefix={setAssPrefix}
-        assFirst={assFirst}
-        setAssFirst={setAssFirst}
-        assSurname={assSurname}
-        setAssSurname={setAssSurname}
-        assAddress={assAddress}
-        setAssAddress={setAssAddress}
-        assQuals={assQuals}
-        setAssQuals={setAssQuals}
-        assDateOfReport={assDateOfReport}
-        setAssDateOfReport={setAssDateOfReport}
-        assPhone={assPhone}
-        setAssPhone={setAssPhone}
-        assEmail={assEmail}
-        setAssEmail={setAssEmail}
-        assIndemnity={assIndemnity}
-        setAssIndemnity={setAssIndemnity}
-        signatureUrl={signatureUrl}
-        pickAndUploadSignature={pickAndUploadSignature}
-        generateSignature={generateSignature}
-        API_BASE={API_BASE}
-        planPdfUrls={planPdfUrls}
-        pickAndUploadPlans={pickAndUploadPlans}
-        onDrivePlanPicked={onDrivePlanPicked}
-        generateReport={generateReport}
-      />
-    )}
-        </View>
+        {sectionBody}
       </>
     )}
 

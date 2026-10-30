@@ -101,4 +101,11 @@ async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   if (!photoCols.some((c) => c.name === 'label')) {
     await db.execAsync(`ALTER TABLE photos ADD COLUMN label TEXT;`);
   }
+
+  // Added with the website: what each uploaded photo shows, keyed by URL, so
+  // the labels travel with the report (see lib/reportColumns.ts).
+  const reportCols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(reports)`);
+  if (!reportCols.some((c) => c.name === 'photo_meta')) {
+    await db.execAsync(`ALTER TABLE reports ADD COLUMN photo_meta TEXT NOT NULL DEFAULT '{}';`);
+  }
 }

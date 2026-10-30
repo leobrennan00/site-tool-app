@@ -1,7 +1,7 @@
 import { AppState, AppStateStatus } from 'react-native';
 import { getPendingItems, markProcessing, markDone, markError, subscribeQueueChanged, SyncQueueItem, enqueue } from './syncQueue';
 import { syncOneReport, pullNewReportsFromServer, getDirtyReportIds } from './offlineReports';
-import { syncPhotoUpload } from './offlinePhotos';
+import { syncPhotoUpload, reconcilePhotosFromServer, backfillPhotoMeta } from './offlinePhotos';
 import { runQueuedReportGeneration } from './offlineReportGeneration';
 import { isOnline, subscribeOnline } from './network';
 
@@ -28,7 +28,10 @@ async function runOne(item: SyncQueueItem): Promise<void> {
     switch (item.type) {
       case 'report_upsert':
       case 'report_delete':
-        if (item.report_id) await syncOneReport(item.report_id);
+        if (item.report_id) {
+          const { photosChanged } = await syncOneReport(item.report_id);
+          if (photosChanged) await reconcilePhotosFromServer(item.report_id);
+        }
         break;
       case 'photo_upload': {
         const payload = JSON.parse(item.payload || '{}');
@@ -59,7 +62,16 @@ export async function processQueue(): Promise<void> {
   processing = true;
   setSyncing(true);
   try {
-    await pullNewReportsFromServer().catch(() => {});
+    // Labels on photos uploaded before photo_meta existed go up with the
+    // next sync; a no-op once every report has them.
+    await backfillPhotoMeta().catch(() => {});
+
+    // Edits made on another device or on the website come down first, so a
+    // report opened next shows them.
+    const pulled = await pullNewReportsFromServer().catch(() => [] as string[]);
+    for (const id of pulled) {
+      await reconcilePhotosFromServer(id).catch(() => {});
+    }
 
     // Defensive reconciliation: a report's `dirty=1` write and its queue
     // enqueue (see saveReportSections in lib/offlineReports.ts) aren't one

@@ -42,8 +42,12 @@
       ]
     },
     "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "name": "SiteReport",
+      "shortName": "SiteReport",
+      "themeColor": "#2E6B4F",
+      "backgroundColor": "#F7FAF7"
     },
     "plugins": [
       "expo-router",
@@ -70,7 +74,8 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "baseUrl": "/app"
     },
     "extra": {
       "router": {},
