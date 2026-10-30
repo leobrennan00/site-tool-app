@@ -63,7 +63,7 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
           <FormInput label="Slope Comment" value={slopeComment} onChangeText={setSlopeComment} placeholder="e.g. Slight gradient to the south" />
           <FormInput label="Houses (within 250 m)" value={houses250m} onChangeText={setHouses250m} placeholder="e.g. ~5 houses; nearest ~110 m NE" multiline />
           <FormInput label="Existing Land Use" value={existingLandUse} onChangeText={setExistingLandUse} placeholder="e.g. Pasture / Tillage / Woodland" />
-          <FormInput label="Vegetation Indicators" value={vegIndicators} onChangeText={setVegIndicators} placeholder="e.g. Rushes present, improved grassland" multiline />
+          <FormInput label="Vegetation Indicators" quickFill="None" value={vegIndicators} onChangeText={setVegIndicators} placeholder="e.g. Rushes present, improved grassland" multiline />
           <FormInput label="Groundwater Flow Direction" value={gwFlowDirection} onChangeText={setGwFlowDirection} placeholder="e.g. Slight gradient to the south" />
           <FormInput label="Ground Condition" value={groundCondition} onChangeText={setGroundCondition} placeholder="e.g. Firm and dry" multiline />
           <FormInput label="Site Boundaries" value={siteBoundaries} onChangeText={setSiteBoundaries} placeholder="e.g. Hedges and trees" multiline />
@@ -75,22 +75,22 @@ export default function VisualAssessmentTab(props: VisualAssessmentProps) {
         <Text style={styles.note}>Within a minimum of 250 m (note distances in metres)</Text>
         <View style={{ gap: 14 }}>
           <FormInput label="Roads" value={roads} onChangeText={setRoads} placeholder="e.g. Local road; nearest ~60 m W" multiline />
-          <FormInput label="Outcrops (Bedrock and/or Subsoil)" value={outcrops} onChangeText={setOutcrops} placeholder="e.g. None observed within 250 m" multiline />
+          <FormInput label="Outcrops (Bedrock and/or Subsoil)" quickFill="None" value={outcrops} onChangeText={setOutcrops} placeholder="e.g. None observed within 250 m" multiline />
         </View>
       </Card>
 
       <Card>
         <CardTitle>Environmental Features</CardTitle>
         <View style={{ gap: 14 }}>
-          <FormInput label="Surface Water Ponding" value={ponding} onChangeText={setPonding} placeholder="e.g. None / isolated shallow pooling NE" multiline />
-          <FormInput label="Lakes" value={lakes} onChangeText={setLakes} placeholder="e.g. None within 250 m" multiline />
-          <FormInput label="Beaches / Shellfish Areas" value={beachesShellfish} onChangeText={setBeachesShellfish} placeholder="e.g. None within study area" multiline />
-          <FormInput label="Wetlands" value={wetlands} onChangeText={setWetlands} placeholder="e.g. None" multiline />
-          <FormInput label="Karst Features" value={karstFeatures} onChangeText={setKarstFeatures} placeholder="e.g. None visible" multiline />
-          <FormInput label="Watercourses / Streams" value={watercourses} onChangeText={setWatercourses} placeholder="e.g. None; note distance, direction, water level" multiline />
-          <FormInput label="Drainage Ditches*" value={drainageDitches} onChangeText={setDrainageDitches} placeholder="e.g. None / open ditch ~40 m S flowing E→W" multiline />
-          <FormInput label="Springs*" value={springs} onChangeText={setSprings} placeholder="e.g. None observed" multiline />
-          <FormInput label="Wells*" value={wellsText} onChangeText={setWellsText} placeholder="e.g. None; note distance/direction and water level" multiline />
+          <FormInput label="Surface Water Ponding" quickFill="None" value={ponding} onChangeText={setPonding} placeholder="e.g. None / isolated shallow pooling NE" multiline />
+          <FormInput label="Lakes" quickFill="None" value={lakes} onChangeText={setLakes} placeholder="e.g. None within 250 m" multiline />
+          <FormInput label="Beaches / Shellfish Areas" quickFill="None" value={beachesShellfish} onChangeText={setBeachesShellfish} placeholder="e.g. None within study area" multiline />
+          <FormInput label="Wetlands" quickFill="None" value={wetlands} onChangeText={setWetlands} placeholder="e.g. None" multiline />
+          <FormInput label="Karst Features" quickFill="None" value={karstFeatures} onChangeText={setKarstFeatures} placeholder="e.g. None visible" multiline />
+          <FormInput label="Watercourses / Streams" quickFill="None" value={watercourses} onChangeText={setWatercourses} placeholder="e.g. None; note distance, direction, water level" multiline />
+          <FormInput label="Drainage Ditches*" quickFill="None" value={drainageDitches} onChangeText={setDrainageDitches} placeholder="e.g. None / open ditch ~40 m S flowing E→W" multiline />
+          <FormInput label="Springs*" quickFill="None" value={springs} onChangeText={setSprings} placeholder="e.g. None observed" multiline />
+          <FormInput label="Wells*" quickFill="None" value={wellsText} onChangeText={setWellsText} placeholder="e.g. None; note distance/direction and water level" multiline />
         </View>
         <Text style={styles.note}>*Note and record water level</Text>
       </Card>

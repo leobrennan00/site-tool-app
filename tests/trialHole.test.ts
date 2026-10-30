@@ -43,8 +43,14 @@ test('the note may keep the pre-filled "From" at the hole depth', () => {
   assert.equal(baseNoteForPayload(layers, '0.7')?.classification, 'Bedrock at base');
 });
 
-test('a mid-hole layer missing "To" is still an error', () => {
-  const layers = [L('0', '0.3', 'Topsoil'), L('0.3', '', 'Sandy SILT')];
-  assert.deepEqual(layerErrors(layers, '2.0'), ['Layer 2: "To" depth is missing or not a number.']);
+test('26055: "From" 0.5 in a 0.55 m hole, "To" blank — still the note', () => {
+  const layers = [L('0', '0.3', 'Top soil'), L('0.3', '0.55', 'SILT'), L('0.5', '', 'Bedrock at bottom of trial hole @ 0.55m BGL')];
+  assert.deepEqual(layerErrors(layers, '0.55'), []);
+  assert.equal(baseNoteForPayload(layers, '0.55')?.classification, 'Bedrock at bottom of trial hole @ 0.55m BGL');
+});
+
+test('a layer above the last one missing "To" is still an error', () => {
+  const layers = [L('0', '0.3', 'Topsoil'), L('0.3', '', 'Sandy SILT'), L('0.9', '2.0', 'CLAY')];
+  assert.ok(layerErrors(layers, '2.0').includes('Layer 2: "To" depth is missing or not a number.'));
   assert.equal(baseNoteForPayload(layers, '2.0'), null);
 });

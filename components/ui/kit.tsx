@@ -66,7 +66,7 @@ export function AppHeader({
 /* ───────────────────────── FormInput ───────────────────────── */
 export function FormInput({
   label, value, onChangeText, placeholder, multiline, hint,
-  keyboardType, secureTextEntry, autoCapitalize, editable = true, style,
+  keyboardType, secureTextEntry, autoCapitalize, editable = true, style, quickFill,
 }: {
   label?: string;
   value: string;
@@ -79,11 +79,25 @@ export function FormInput({
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   editable?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** A one-tap answer shown beside the label (e.g. "None") that fills the box. */
+  quickFill?: string;
 }) {
   const [focused, setFocused] = useState(false);
+  const quick = quickFill && editable && onChangeText ? (
+    <Pressable onPress={() => onChangeText(quickFill)} hitSlop={8} accessibilityRole="button"
+      accessibilityLabel={`Set ${label ?? 'field'} to ${quickFill}`}
+      style={[styles.quickFill, value.trim() === quickFill && styles.quickFillOn]}>
+      <Text style={[styles.quickFillText, value.trim() === quickFill && styles.quickFillTextOn]}>{quickFill}</Text>
+    </Pressable>
+  ) : null;
   return (
     <View style={[{ marginBottom: 0 }, style]}>
-      {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
+      {label || quick ? (
+        <View style={styles.inputLabelRow}>
+          {label ? <Text style={[styles.inputLabel, { flex: 1, marginBottom: 0 }]}>{label}</Text> : <View style={{ flex: 1 }} />}
+          {quick}
+        </View>
+      ) : null}
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -399,6 +413,14 @@ const styles = StyleSheet.create({
   menuLines: { width: 22, gap: 4 },
   menuLine: { height: 2, borderRadius: 1, backgroundColor: Brand.text },
 
+  inputLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6, minHeight: 20 },
+  quickFill: {
+    borderWidth: 1.5, borderColor: Brand.border, borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 4, backgroundColor: Brand.surface,
+  },
+  quickFillOn: { borderColor: Brand.primary, backgroundColor: Brand.primary },
+  quickFillText: { fontSize: 12, fontFamily: Font.semibold, color: Brand.textSub },
+  quickFillTextOn: { color: '#fff' },
   inputLabel: {
     fontSize: 12, fontFamily: Font.bold, color: Brand.textSub,
     textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6,

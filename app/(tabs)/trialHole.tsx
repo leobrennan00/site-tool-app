@@ -5,7 +5,7 @@ import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView
 import { TimeField } from "@/components/ui/TimeField";
 import { DateField } from "@/components/ui/DateField";
 import { SuggestionNote } from "@/components/ui/SuggestionNote";
-import { SoilLayer, LAYER_TEXT_FIELDS, newLayer, layerErrors } from "@/lib/trialHole";
+import { SoilLayer, LAYER_TEXT_FIELDS, newLayer, layerErrors, splitBaseNote } from "@/lib/trialHole";
 
 // Constants for soil horizons grid - matching the actual report format
 // The text box has 50 lines, with depth markers from 0.1m to 3.5m (35 markers)
@@ -117,6 +117,7 @@ export default function TrialHoleTab(props: TrialHoleProps) {
     .some((t) => (t || "").trim() !== "");
   const showLegacyGrid = hasLegacyColumns && soilLayers.length === 0;
   const errors = layerErrors(soilLayers, trialDepth);
+  const baseNote = splitBaseNote(soilLayers).note;
 
   const updateLayer = (id: string, key: keyof SoilLayer, value: string) =>
     setSoilLayers(soilLayers.map((l) => (l.id === id ? { ...l, [key]: value } : l)));
@@ -226,14 +227,13 @@ export default function TrialHoleTab(props: TrialHoleProps) {
         <Text style={styles.note}>
           One entry per layer, from the surface down to the bottom of the hole. Each layer is drawn
           on the report log at its true depth. To write a note for the bottom of the hole (e.g.
-          "Large boulders/bedrock at bottom of trial hole @ 0.7m BGL"), add a last entry and leave
-          "To" blank.
+          "Bedrock at bottom of trial hole @ 0.55m BGL"), add a last entry and leave "To" blank.
         </Text>
 
         {soilLayers.map((layer, i) => (
           <View key={layer.id} style={styles.layerBox}>
             <View style={styles.layerHeader}>
-              <Text style={styles.layerTitle}>Layer {i + 1}</Text>
+              <Text style={styles.layerTitle}>{layer === baseNote ? "Bottom of hole note" : `Layer ${i + 1}`}</Text>
               <Pressable onPress={() => removeLayer(layer.id)} hitSlop={8} style={styles.layerRemove} accessibilityLabel={`Remove layer ${i + 1}`}>
                 <Text style={styles.layerRemoveText}>Remove</Text>
               </Pressable>

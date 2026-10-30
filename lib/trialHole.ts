@@ -37,19 +37,16 @@ const fmt = (n: number) => (Math.round(n * 100) / 100).toString();
 const LAYER_TEXT_KEYS = LAYER_TEXT_FIELDS.map((f) => f.key);
 
 /**
- * The last entry can be a note for the bottom of the hole (e.g. "Large
- * boulders/bedrock at bottom of trial hole @ 0.7m BGL") rather than a layer:
- * it has text but no "To" depth, and its "From" is blank or at/below the
- * hole depth (adding a layer pre-fills "From"). Returns the depth layers and
- * that note, if any.
+ * The last entry can be a note for the bottom of the hole (e.g. "Bedrock at
+ * bottom of trial hole @ 0.55m BGL") rather than a layer: it has text but no
+ * "To" depth. Its "From" is ignored (adding a layer pre-fills it). Returns
+ * the depth layers and that note, if any.
  */
-export function splitBaseNote(layers: SoilLayer[], trialDepth: string): { layers: SoilLayer[]; note: SoilLayer | null } {
+export function splitBaseNote(layers: SoilLayer[], _trialDepth?: string): { layers: SoilLayer[]; note: SoilLayer | null } {
   const last = layers[layers.length - 1];
   if (!last || String(last.to ?? '').trim() !== '') return { layers, note: null };
   if (!LAYER_TEXT_KEYS.some((k) => String(last[k] ?? '').trim())) return { layers, note: null };
-  const from = num(last.from), td = num(trialDepth);
-  const atBottom = Number.isNaN(from) || (!Number.isNaN(td) && from >= td - 0.005);
-  return atBottom ? { layers: layers.slice(0, -1), note: last } : { layers, note: null };
+  return { layers: layers.slice(0, -1), note: last };
 }
 
 /** The bottom-of-hole note's descriptions for the report payload, or null. */
