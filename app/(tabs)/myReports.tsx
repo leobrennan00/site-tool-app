@@ -10,6 +10,7 @@ import { ProgressRing, StatusPill, GradientHero } from '@/components/ui/kit';
 import { IcoChevronRight, IcoPlus, IcoTrash } from '@/components/ui/icons';
 import { useIsDesktop } from '@/hooks/useLayout';
 import { DesktopReports } from '@/components/web/DesktopReports';
+import { ReportsMap } from '@/components/ReportsMap';
 
 interface MyReportsProps {
   onLoadReport: (report: Report) => void;
@@ -54,6 +55,7 @@ export default function MyReportsTab(props: MyReportsProps) {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState<'list' | 'map'>('list');
   const desktop = useIsDesktop();
 
   useEffect(() => { loadReports(); }, []);
@@ -162,9 +164,28 @@ export default function MyReportsTab(props: MyReportsProps) {
         </GradientHero>
       </Pressable>
 
-      <Text style={styles.sectionLabel}>Recent Reports</Text>
+      <View style={styles.segment}>
+        {(['list', 'map'] as const).map((v) => (
+          <Pressable key={v} onPress={() => setView(v)} style={[styles.segmentBtn, view === v && styles.segmentOn]}
+            accessibilityRole="tab" accessibilityState={{ selected: view === v }}>
+            <Text style={[styles.segmentText, view === v && styles.segmentTextOn]}>{v === 'list' ? 'List' : 'Map'}</Text>
+          </Pressable>
+        ))}
+      </View>
 
-      {reports.length === 0 ? (
+      {view === 'map' ? (
+        <View style={styles.mapCard}>
+          <ReportsMap
+            items={reports.map((report) => ({
+              report,
+              // Client first, as on the desktop map; the location is the line below.
+              title: `${report.client_info?.firstName || ''} ${report.client_info?.surname || ''}`.trim() || titleOf(report),
+              location: report.client_info?.siteLocation || '',
+            }))}
+            onOpen={onLoadReport}
+          />
+        </View>
+      ) : reports.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateTitle}>No Reports Yet</Text>
           <Text style={styles.emptyStateText}>Create your first site assessment to get started</Text>
@@ -220,9 +241,16 @@ const styles = StyleSheet.create({
   ctaTitle: { fontSize: 17, fontFamily: Font.bold, color: '#fff', letterSpacing: -0.2 },
   ctaSub: { fontSize: 13, fontFamily: Font.regular, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
 
-  sectionLabel: {
-    fontSize: 11, fontFamily: Font.bold, color: Brand.textMuted,
-    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12, marginLeft: 2,
+  segment: {
+    flexDirection: 'row', backgroundColor: Brand.borderLight, borderRadius: 12, padding: 3, marginBottom: 14,
+  },
+  segmentBtn: { flex: 1, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segmentOn: { backgroundColor: Brand.surface, ...Shadow.card },
+  segmentText: { fontSize: 13.5, fontFamily: Font.semibold, color: Brand.textSub },
+  segmentTextOn: { color: Brand.primary },
+  mapCard: {
+    backgroundColor: Brand.surface, borderRadius: 18, padding: 14,
+    borderWidth: 1, borderColor: Brand.borderLight, ...Shadow.card,
   },
 
   emptyState: { alignItems: 'center', padding: 40 },

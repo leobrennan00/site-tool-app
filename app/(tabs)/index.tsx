@@ -2225,6 +2225,8 @@ const TANK_TYPES = [
       setPastExperience(deskStudy.pastExperience || '');
       setDeskComments(deskStudy.deskComments || '');
       setExpectedRange(deskStudy.expectedRange || null);
+      setLat(deskStudy.siteLat || '');
+      setLon(deskStudy.siteLon || '');
 
       const visualAssessment = report.visual_assessment || {};
       setLandscapePosition(visualAssessment.landscapePosition || '');
@@ -2518,6 +2520,8 @@ const TANK_TYPES = [
         setImgUris([]);
         setDeskStudyStatus('none');
         setLocalMapUris({});
+        setLat('');
+        setLon('');
 
         // Reset Trial Hole data
         setTrialDepth('');
@@ -2906,6 +2910,10 @@ const TANK_TYPES = [
         pastExperience,
         deskComments,
         expectedRange,
+        // The site coordinates, so the report can be continued on another
+        // device and pinned on the reports map (components/ReportsMap.tsx).
+        siteLat: lat.trim(),
+        siteLon: lon.trim(),
       },
       visualAssessment: {
         landscapePosition,

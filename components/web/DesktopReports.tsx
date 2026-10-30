@@ -4,6 +4,7 @@ import { Brand, Font } from '@/constants/theme';
 import { ProgressRing, StatusPill } from '@/components/ui/kit';
 import { IcoPlus, IcoSearch, IcoTrash, IcoChevronRight } from '@/components/ui/icons';
 import type { Report } from '@/lib/reports';
+import { ReportsMap } from '@/components/ReportsMap';
 
 export interface ReportRowData {
   report: Report;
@@ -13,7 +14,8 @@ export interface ReportRowData {
 }
 
 /** My Reports on the desktop layout: a searchable table of every report —
- *  including those started on the phone — with the same progress rings. */
+ *  including those started on the phone — with the same progress rings, and
+ *  beside it a map of Ireland with a pin for each site. */
 export function DesktopReports({
   rows, loading, onOpen, onNew, onDelete,
 }: {
@@ -24,6 +26,7 @@ export function DesktopReports({
   onDelete: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [hoverRow, setHoverRow] = useState<string | null>(null);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
@@ -49,7 +52,8 @@ export function DesktopReports({
         </Pressable>
       </View>
 
-      <View style={styles.card}>
+      <View style={styles.columns}>
+      <View style={[styles.card, { flex: 1, minWidth: 0 }]}>
         <View style={styles.toolbar}>
           <View style={styles.search}>
             <IcoSearch size={18} />
@@ -66,7 +70,7 @@ export function DesktopReports({
         <View style={[styles.tr, styles.thead]}>
           <Text style={[styles.th, { flex: 3.2 }]}>Report</Text>
           <Text style={[styles.th, { flex: 1.2 }]}>File ref</Text>
-          <Text style={[styles.th, { flex: 1 }]}>Status</Text>
+          <Text style={[styles.th, { flex: 1.2 }]}>Status</Text>
           <Text style={[styles.th, { flex: 1.1 }]}>Updated</Text>
           <View style={{ width: 76 }} />
         </View>
@@ -83,6 +87,8 @@ export function DesktopReports({
         ) : (
           shown.map(({ report, title, location, percent }) => (
             <Pressable key={report.id} onPress={() => onOpen(report)}
+              onHoverIn={() => setHoverRow(report.id)}
+              onHoverOut={() => setHoverRow((h) => (h === report.id ? null : h))}
               style={({ hovered }: any) => [styles.tr, styles.row, hovered && styles.rowHover]}>
               <View style={[styles.cell, { flex: 3.2, flexDirection: 'row', alignItems: 'center' }]}>
                 <ProgressRing size={40} stroke={4} percent={percent} variant="green" />
@@ -92,7 +98,7 @@ export function DesktopReports({
                 </View>
               </View>
               <Text numberOfLines={1} style={[styles.cell, styles.td, { flex: 1.2 }]}>{report.client_info?.fileRef || '—'}</Text>
-              <View style={[styles.cell, { flex: 1 }]}>
+              <View style={[styles.cell, { flex: 1.2 }]}>
                 <StatusPill status={report.status === 'completed' ? 'completed' : 'draft'} />
               </View>
               <Text style={[styles.cell, styles.td, { flex: 1.1 }]}>{formatUpdated(report.updated_at)}</Text>
@@ -106,6 +112,13 @@ export function DesktopReports({
             </Pressable>
           ))
         )}
+      </View>
+
+      <View style={[styles.card, styles.mapCard]}>
+        <Text style={styles.mapTitle}>Sites</Text>
+        <Text style={styles.mapSub}>{query.trim() ? 'Reports matching your search' : 'Every report, by where the site is'}</Text>
+        <ReportsMap items={shown} onOpen={onOpen} highlightId={hoverRow} style={{ marginTop: 14 }} />
+      </View>
       </View>
     </ScrollView>
   );
@@ -132,7 +145,7 @@ function formatUpdated(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  page: { width: '100%', maxWidth: 1180, alignSelf: 'center', padding: 32, paddingBottom: 80 },
+  page: { width: '100%', maxWidth: 1480, alignSelf: 'center', padding: 32, paddingBottom: 80 },
   statsRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 22 },
   stat: {
     backgroundColor: Brand.surface, borderRadius: 14, borderWidth: 1, borderColor: Brand.borderLight,
@@ -150,6 +163,10 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.surface, borderRadius: 18, borderWidth: 1, borderColor: Brand.borderLight, overflow: 'hidden',
     shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 2 },
   },
+  columns: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
+  mapCard: { width: 400, padding: 18, position: 'sticky' as any, top: 0 },
+  mapTitle: { fontSize: 16, fontFamily: Font.bold, color: Brand.text, letterSpacing: -0.2 },
+  mapSub: { fontSize: 13, fontFamily: Font.regular, color: Brand.textSub, marginTop: 2 },
   toolbar: { padding: 16, borderBottomWidth: 1, borderBottomColor: Brand.borderLight },
   search: {
     flexDirection: 'row', alignItems: 'center', gap: 10, height: 42, maxWidth: 420, paddingHorizontal: 14,
